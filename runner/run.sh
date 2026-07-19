@@ -104,6 +104,9 @@ if [ -d "$BENCH_ROOT/.secrets" ]; then
   for sf in "$BENCH_ROOT"/.secrets/*; do
     [ -f "$sf" ] || continue
     b="$(basename "$sf")"; [ "$b" = ".gitkeep" ] && continue
+    # nome do segredo restrito a [a-z0-9-] — senão geraria uma chave de env que a
+    # allowlist/redação não reconhece (risco de vazamento). Ver TASK_ID guard.
+    case "$b" in *[!A-Za-z0-9-]*) echo "run.sh: nome de segredo inválido '$b' (use só [a-z0-9-]); pulando." >&2; continue ;; esac
     kn="$(printf '%s' "$b" | tr '[:lower:]-' '[:upper:]_')_API_KEY"
     SECRET_NAMES+=("$kn"); SECRET_VALUES+=("$(cat "$sf")"); SECRET_COUNT=$((SECRET_COUNT+1))
   done
@@ -135,15 +138,19 @@ ENVCMD=(env -i
 # Chaves esperadas no ambiente do filho (entrada do check A7).
 EXPECTED_KEYS="PATH HOME XDG_CONFIG_HOME XDG_CACHE_HOME XDG_DATA_HOME TERM LANG TZ CLAUDE_CONFIG_DIR CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC DISABLE_AUTOUPDATER DISABLE_AUTOCOMPACT CLAUDE_CODE_EFFORT_LEVEL MAX_THINKING_TOKENS ANTHROPIC_BASE_URL SHVIA_RUN_ID SHVIA_TASK_ID"
 for i in "${!SECRET_NAMES[@]}"; do
-  ENVCMD+=("${SECRET_NAMES[$i]}=${SECRET_VALUES[$i]}")
   EXPECTED_KEYS="$EXPECTED_KEYS ${SECRET_NAMES[$i]}"
 done
 
-# --- env.snapshot: o ambiente EXATO do filho, com TODA chave *_API_KEY redigida.
-#     Artefato de auditoria + entrada dos checks A7/A12/A13. ------------------
-"${ENVCMD[@]}" env \
-  | sed -E 's/^([A-Za-z0-9_]*_API_KEY)=.*/\1=***REDACTED***/' \
-  | sort > "$RUN_DIR/env.snapshot"
+# --- env.snapshot: base allowlist + PLACEHOLDER por segredo. O valor REAL do
+#     segredo NUNCA entra no pipeline do snapshot — assim um valor multi-linha
+#     não vaza a 2ª+ linha (a redação por-linha antiga vazava). Artefato de
+#     auditoria + entrada dos checks A7/A12/A13. -------------------------------
+SNAPCMD=("${ENVCMD[@]}")
+for i in "${!SECRET_NAMES[@]}"; do SNAPCMD+=("${SECRET_NAMES[$i]}=***REDACTED***"); done
+"${SNAPCMD[@]}" env | sort > "$RUN_DIR/env.snapshot"
+
+# --- só AGORA injeta os segredos REAIS no ENVCMD (exclusivo do exec final) --
+for i in "${!SECRET_NAMES[@]}"; do ENVCMD+=("${SECRET_NAMES[$i]}=${SECRET_VALUES[$i]}"); done
 
 # --- Metadados do run (não é o manifesto de campanha; é o traço deste run) --
 cat > "$RUN_DIR/run.meta.json" <<JSON

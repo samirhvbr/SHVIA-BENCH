@@ -1,0 +1,30 @@
+{
+  "_note": "Registro de HARNESSES de agente para a Trilha B (o paralelo do gateways.json, que é para a Trilha A). Cada harness dirige um modelo num loop de ferramentas. `validate:true` = surface a CONFIRMAR rodando o harness (como o Claude Code foi — config/harness-matrix.md) antes de implementar o adapter. O track_b monta o argv por `result_format`; o collect extrai C1/C2 por `result_format`/`transcript.kind`. Só o adapter `claude-code-json` está implementado; os demais são templates — track_b recusa com mensagem clara até o adapter existir.",
+  "harnesses": {
+    "claude-code": {
+      "bin": "claude", "version": "2.1.207", "validate": false,
+      "vendors": ["anthropic"],
+      "result_format": "claude-code-json",
+      "transcript": {"kind": "claude-code", "path": "$CLAUDE_CONFIG_DIR/projects/<cwd-slug>/<session>.jsonl"},
+      "_note": "surface validado empiricamente (config/harness-matrix.md). Só dirige modelos Anthropic."
+    },
+    "kilo-code": {
+      "bin": "kilo", "validate": true, "adapter_impl": false,
+      "vendors": ["anthropic", "openai", "xai", "deepseek", "zai", "novita", "openrouter", "kilo"],
+      "result_format": "?", "transcript": {"kind": "?"},
+      "_note": "Kilo Code (fork Roo/Cline). VALIDAR: tem modo headless/CLI com saída machine (json)? flags de model/budget/max-turns/permission? onde grava o transcript/histórico? config de MCP/regras a isolar? Preencher em harness-matrix e implementar o adapter."
+    },
+    "cline": {
+      "bin": "cline", "validate": true, "adapter_impl": false,
+      "vendors": ["anthropic", "openai", "xai", "deepseek", "zai", "novita", "openrouter"],
+      "result_format": "?", "transcript": {"kind": "?"},
+      "_note": "Cline (headless/CLI?) — confirmar surface e formato de saída antes do adapter."
+    },
+    "cursor-cli": {
+      "bin": "cursor-agent", "validate": true, "adapter_impl": false,
+      "vendors": ["anthropic", "openai", "xai", "deepseek"],
+      "result_format": "?", "transcript": {"kind": "?"},
+      "_note": "Cursor CLI (cursor-agent) — confirmar surface (--output-format, headers de custo, transcript)."
+    }
+  }
+}

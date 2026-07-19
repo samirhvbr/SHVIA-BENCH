@@ -31,7 +31,9 @@ def main():
             "mcp_config": os.path.join(ROOT, "config", "mcp.empty.json"),
             "settings": os.path.join(config_dir, "settings.json")}
 
-    hr = track_b.run_harness(fake, model_cfg, "corrija o bug",
+    harness = {"name": "claude-code", "bin": fake, "result_format": "claude-code-json",
+               "transcript": {"kind": "claude-code"}}
+    hr = track_b.run_harness(harness, model_cfg, "corrija o bug",
                              workspace, config_dir, opts)
     print("harness:", json.dumps({k: hr.get(k) for k in
           ("status", "session_id", "e2e_ms", "transcript_path")}, ensure_ascii=False))

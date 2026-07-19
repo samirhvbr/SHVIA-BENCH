@@ -52,9 +52,11 @@ def parse_c1(c1):
     }
 
 
-def parse_c2(path):
-    """transcript JSONL → subagentes, thinking, ferramentas, pico de contexto."""
-    if not path or not os.path.exists(path):
+def parse_c2(path, kind="claude-code"):
+    """transcript JSONL → subagentes, thinking, ferramentas, pico de contexto.
+    Adapter por harness (kind). Só 'claude-code' implementado (schema validado
+    em config/harness-matrix.md); outros harnesses → None até ter adapter próprio."""
+    if kind != "claude-code" or not path or not os.path.exists(path):
         return None
     subagents, sub_types, thinking, by_name = 0, [], 0, {}
     peak, per_turn, compaction, sidechain = 0, [], 0, False
@@ -140,7 +142,7 @@ def collect(harness_result, proxy_log, model_cfg, ids, verify):
     """Funde C1+C2+C3 numa linha results.schema.json (Trilha B)."""
     hr = harness_result
     c1 = parse_c1(hr.get("c1"))
-    c2 = parse_c2(hr.get("transcript_path"))
+    c2 = parse_c2(hr.get("transcript_path"), hr.get("transcript_kind", "claude-code"))
     c3 = parse_c3(proxy_log)
     price = model_cfg["price_per_mtok"]
 

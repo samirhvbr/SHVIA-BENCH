@@ -37,7 +37,10 @@ def build_body_anthropic(model_cfg, prompt):
 
 def build_body_openai(model_cfg, gateway, prompt):
     p = model_cfg.get("params", {})
-    body = {"model": model_cfg["id"], "max_tokens": model_cfg.get("max_tokens", 8192),
+    # nome do campo de teto de saída é POR-GATEWAY: OpenAI (gpt-5/o-series) exige
+    # max_completion_tokens e rejeita max_tokens (400); os demais usam max_tokens.
+    tok_field = gateway.get("max_tokens_field", "max_tokens")
+    body = {"model": model_cfg["id"], tok_field: model_cfg.get("max_tokens", 8192),
             "stream": True, "stream_options": {"include_usage": True},
             "messages": [{"role": "user", "content": prompt}]}
     if gateway.get("sampling_ok") and model_cfg.get("sampling_ok") is not False:
@@ -98,11 +101,17 @@ def parse_openai_sse(text):
         model = model or o.get("model")
         u = o.get("usage")
         if isinstance(u, dict):
-            usage["input_tokens"] = u.get("prompt_tokens", usage.get("input_tokens"))
-            usage["output_tokens"] = u.get("completion_tokens", usage.get("output_tokens"))
+            # OpenAI: prompt_tokens JÁ INCLUI os cached_tokens → não somar de novo.
+            # input_tokens = prompt_tokens - cached; cache_read = cached (preços distintos).
             det = u.get("prompt_tokens_details") or {}
-            if det.get("cached_tokens") is not None:
-                usage["cache_read_input_tokens"] = det["cached_tokens"]
+            cached = det.get("cached_tokens")
+            if cached is not None:
+                usage["cache_read_input_tokens"] = cached
+            pt = u.get("prompt_tokens")
+            if pt is not None:
+                usage["input_tokens"] = pt - (cached or 0)
+            if u.get("completion_tokens") is not None:
+                usage["output_tokens"] = u["completion_tokens"]
         for ch in (o.get("choices") or []):
             d = ch.get("delta") or {}
             if d.get("content"):
@@ -113,11 +122,20 @@ def parse_openai_sse(text):
 
 
 def compute_cost(usage, price):
-    t = lambda k: usage.get(k, 0) or 0
-    return round((t("input_tokens") * price.get("input", 0)
-                  + t("output_tokens") * price.get("output", 0)
-                  + t("cache_creation_input_tokens") * price.get("cache_write", 0)
-                  + t("cache_read_input_tokens") * price.get("cache_read", 0)) / 1e6, 8)
+    # métrica ausente = null, NUNCA 0 (§10.3): se há tokens num bucket mas o preço
+    # dele é None/ausente, o custo é DESCONHECIDO → retorna None (não zero silencioso).
+    total = 0.0
+    for tk, pk in (("input_tokens", "input"), ("output_tokens", "output"),
+                   ("cache_creation_input_tokens", "cache_write"),
+                   ("cache_read_input_tokens", "cache_read")):
+        cnt = usage.get(tk, 0) or 0
+        if not cnt:
+            continue
+        pr = price.get(pk)
+        if pr is None:
+            return None
+        total += cnt * pr
+    return round(total / 1e6, 8)
 
 
 def run_case(model_cfg, gateway, prompt, api_key, base_url, ids):
@@ -138,10 +156,14 @@ def run_case(model_cfg, gateway, prompt, api_key, base_url, ids):
     s = urlsplit(base_url.rstrip("/") + gateway["path"])
     scheme = s.scheme or "https"
     host, port = s.hostname, s.port or (443 if scheme == "https" else 80)
+    # proxy_bypassed: base_url == default do gateway ⇒ foi DIRETO no vendor (sem C3).
+    # (Anthropic via proxy usa ANTHROPIC_BASE_URL, que difere do default → false.)
+    proxy_bypassed = base_url.rstrip("/") == gateway.get("base_url", "").rstrip("/")
     rec = {"run_id": ids["run_id"], "case_id": ids["case_id"], "task_id": ids["task_id"],
            "model_alias": ids["model_alias"], "model_id_resolved": None, "track": "A",
            "repetition": ids["repetition"], "session_id": None, "provider_effective": None,
            "started_utc": round(time.time(), 3), "prompt_sha256": prompt_sha,
+           "proxy_bypassed": proxy_bypassed,
            "agents": None, "tools": None, "autonomy": None}
     t0 = time.perf_counter()
     ttft_ms, buf = None, bytearray()

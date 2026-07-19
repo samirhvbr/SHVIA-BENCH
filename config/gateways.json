@@ -12,7 +12,8 @@
       "kind": "openai", "base_url": "https://api.openai.com", "path": "/v1/chat/completions",
       "base_url_env": "OPENAI_BASE_URL", "auth": "bearer", "key_env": "OPENAI_API_KEY",
       "allowed_hosts": ["api.openai.com"], "sampling_ok": true, "validate": false,
-      "_note": "modelos de raciocínio (o*/gpt-5 reasoning) rejeitam temperature != 1 → sampling_ok:false por-modelo; usam reasoning_effort"
+      "max_tokens_field": "max_completion_tokens",
+      "_note": "gpt-5/o-series rejeitam max_tokens (400) → max_completion_tokens; e rejeitam temperature != 1 → sampling_ok:false por-modelo, usam reasoning_effort"
     },
     "xai": {
       "kind": "openai", "base_url": "https://api.x.ai", "path": "/v1/chat/completions",

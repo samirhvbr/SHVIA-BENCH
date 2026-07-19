@@ -34,8 +34,8 @@ def transcript_path(config_dir, workspace, session_id):
     return os.path.join(config_dir, "projects", slug, f"{session_id}.jsonl")
 
 
-def build_argv(claude_bin, prompt, model_id, session_id, opts):
-    argv = [claude_bin, "-p", prompt,
+def build_argv_claude_code(bin_, prompt, model_id, session_id, opts):
+    argv = [bin_, "-p", prompt,
             "--model", model_id,
             "--output-format", "json",
             "--session-id", session_id,
@@ -50,10 +50,27 @@ def build_argv(claude_bin, prompt, model_id, session_id, opts):
     return argv
 
 
-def run_harness(claude_bin, model_cfg, prompt, workspace, config_dir, opts):
+def build_argv(harness, prompt, model_id, session_id, opts):
+    """Dispatch por adapter (result_format). Só claude-code-json implementado."""
+    rf = harness.get("result_format")
+    if rf == "claude-code-json":
+        return build_argv_claude_code(harness["bin"], prompt, model_id, session_id, opts)
+    raise NotImplementedError(
+        f"harness '{harness.get('name', '?')}' (result_format={rf}) sem adapter — "
+        f"valide o surface (config/harness-matrix.md) e implemente")
+
+
+def parse_result(harness, stdout):
+    """Result object → C1. Só claude-code-json (JSON único) implementado."""
+    if harness.get("result_format") == "claude-code-json":
+        return json.loads(stdout)
+    raise NotImplementedError(f"parse_result: sem adapter p/ {harness.get('result_format')}")
+
+
+def run_harness(harness, model_cfg, prompt, workspace, config_dir, opts):
     """Invoca o harness uma vez. Retorna dict com C1 (result), paths e timing/status."""
     session_id = str(uuid.uuid4())
-    argv = build_argv(claude_bin, prompt, model_cfg["id"], session_id, opts)
+    argv = build_argv(harness, prompt, model_cfg["id"], session_id, opts)
     t0 = time.perf_counter()
     started = time.time()
     status, c1, err = "completed", None, None
@@ -68,14 +85,14 @@ def run_harness(claude_bin, model_cfg, prompt, workspace, config_dir, opts):
             status, err = "infra_error", (proc.stderr or "")[:500]
         else:
             try:
-                c1 = json.loads(proc.stdout)
+                c1 = parse_result(harness, proc.stdout)
             except json.JSONDecodeError:
                 status, err = "infra_error", "result JSON ilegível: " + proc.stdout[:300]
     except subprocess.TimeoutExpired:
         e2e_ms = round((time.perf_counter() - t0) * 1000, 1)
         status = "timeout"
     except FileNotFoundError:
-        return {"status": "infra_error", "error": f"harness ausente: {claude_bin}"}
+        return {"status": "infra_error", "error": f"harness ausente: {harness['bin']}"}
 
     # limites → status (subtype REAL do 2.1.207 só confirmado p/ 'success'; ver §matrix)
     if c1 and status == "completed":
@@ -83,9 +100,11 @@ def run_harness(claude_bin, model_cfg, prompt, workspace, config_dir, opts):
         if c1.get("is_error") or (sub and sub != "success"):
             status = {"error_max_budget_usd": "budget_exceeded",
                       "error_max_turns": "max_turns"}.get(sub, "failed_verification")
+    tk = (harness.get("transcript") or {}).get("kind")
+    tpath = transcript_path(config_dir, workspace, session_id) if tk == "claude-code" else None
     return {
         "status": status, "session_id": session_id, "c1": c1,
-        "transcript_path": transcript_path(config_dir, workspace, session_id),
+        "transcript_path": tpath, "transcript_kind": tk,
         "workspace": workspace, "e2e_ms": e2e_ms,
         "started_utc": round(started, 3), "finished_utc": round(time.time(), 3),
         "error": err,
@@ -114,7 +133,9 @@ def main():
     ap.add_argument("--out", default=None)
     ap.add_argument("--models", default=None)
     ap.add_argument("--proxy-log", default=os.environ.get("SHVIA_PROXY_LOG"))
-    ap.add_argument("--claude-bin", default="claude")
+    ap.add_argument("--harness", default="claude-code", help="id em config/harnesses.json")
+    ap.add_argument("--harnesses", default=None)
+    ap.add_argument("--bin", default=None, help="override do binário do harness (ex.: fake p/ teste)")
     ap.add_argument("--timeout", type=int, default=int(os.environ.get("TIMEOUT_S", "900")))
     ap.add_argument("--budget", type=float, default=float(os.environ.get("BUDGET_PER_CASE_USD", "2.0")))
     ap.add_argument("--max-turns", type=int, default=int(os.environ.get("MAX_TURNS", "30")))
@@ -127,6 +148,16 @@ def main():
     if args.model not in cfg["models"]:
         sys.exit(f"track_b: modelo '{args.model}' ausente")
     model_cfg = cfg["models"][args.model]
+
+    hs = json.load(open(args.harnesses or os.path.join(root, "config", "harnesses.json")))["harnesses"]
+    if args.harness not in hs:
+        sys.exit(f"track_b: harness '{args.harness}' ausente em harnesses.json")
+    harness = dict(hs[args.harness], name=args.harness)
+    if args.bin:
+        harness["bin"] = args.bin
+    if harness.get("result_format") != "claude-code-json":
+        sys.exit(f"track_b: harness '{args.harness}' sem adapter implementado — valide o "
+                 f"surface (config/harness-matrix.md) e implemente o adapter antes de rodar.")
 
     task_dir = os.path.join(root, "tasks", args.task)
     prompt_path = os.path.join(task_dir, "prompt.md")
@@ -144,7 +175,7 @@ def main():
 
     completed = 0
     for rep in range(1, args.reps + 1):
-        hr = run_harness(args.claude_bin, model_cfg, prompt, workspace, config_dir, opts)
+        hr = run_harness(harness, model_cfg, prompt, workspace, config_dir, opts)
         verify = run_verify(task_dir, workspace) if hr["status"] in ("completed", "failed_verification") else \
             {"passed": None, "exit_code": None}
         ids = {"run_id": run_id, "task_id": args.task, "model_alias": args.model,

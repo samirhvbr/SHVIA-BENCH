@@ -137,9 +137,29 @@ confirmar no 1º smoke de cada um (disciplina §15).
   shapes; e prova de que o valor de 2 segredos plantados **não vaza** em nenhum
   artefato do run.
 
-**Trilha B multi-vendor (aberto, §14 Q2):** o Claude Code só dirige modelos
-Anthropic. GPT/Grok/DeepSeek/etc. **num harness** precisam de outro harness (ex.
-Kilo Code), validado como o Claude Code foi. Decisão de operador — ver Próximo.
+## Multi-harness / Trilha B + fixes da revisão (19/07/2026, 0.5.0)
+
+Decisão do operador (§14 Q2): **vários harnesses reais**. Criada a camada de
+harness plugável (paralelo do gateways.json): `config/harnesses.json` +
+adapter-dispatch no track_b/collect. **Claude Code** é o único adapter
+implementado (surface validado); **Kilo Code / Cline / Cursor CLI** entram como
+templates `validate:true` — o track_b **recusa com mensagem clara** até o adapter
+de cada um existir (cada um precisa da validação de surface própria, como o
+Claude Code teve).
+
+**8 achados da 2ª revisão adversarial (diff 0.4.0) — aplicados e provados:**
+- **HIGH** — `env.snapshot` vazava a 2ª+ linha de um segredo **multi-linha** (a
+  redação por-linha só pegava a 1ª). Agora o snapshot usa **placeholder** (o valor
+  real nunca entra no pipeline); + nome de segredo validado `[a-z0-9-]`. Provado:
+  segredo multi-linha não vaza em nenhum artefato.
+- **HIGH** — OpenAI gpt-5/o-series rejeitam `max_tokens` (400) → `max_tokens_field`
+  por-gateway (`max_completion_tokens`); `prompt_tokens` da OpenAI **já inclui**
+  cached → não contar 2x (input = prompt − cached).
+- **HIGH** — Haiku 4.5 não tem `output_config.effort` (400) → removido do M-haiku45.
+- **MED/LOW** — custo = **null** (não 0) quando falta preço de um bucket usado
+  (§10.3); templates de vendor com preço `null`; `proxy_bypassed` sinalizado na
+  Trilha A direta (vendor sem proxy = sem C3); Kilo `sampling_ok:false` (o id é
+  Anthropic 4.6+).
 
 ## Próximo — Fase 4 / campanha real
 
