@@ -91,10 +91,35 @@ O mesmo "smoke ao vivo" que persegue o ecossistema. Precisa de `.secrets/anthrop
   `cost_delta_pct<2%` — que compara custo do harness vs recalculado, uma métrica
   de *Trilha B*; na Trilha A o custo recalculado é o próprio instrumento).
 
-## Próximo — Fase 3 (Trilha B)
+## Fase 3 — Trilha B / modelo + harness (19/07/2026, 0.3.0)
 
-`track_b.py` (invoca o harness — `claude -p` — no workspace efêmero, até concluir)
-+ `collect.py` (funde C1 result / C2 transcript JSONL / C3 proxy) + verificadores
-+ tarefas-armadilha de ambiguidade. **Antes**, validar o surface do Claude Code
-2.1.207 (o item pendente acima). Decisões de operador do §14 (modelos, Kilo, nível
-de esforço, juiz, publicação) travam aqui.
+Precedido pela **validação empírica do surface do Claude Code 2.1.207** (0.2.1,
+`config/harness-matrix.md`): flags e schemas C1/C2 confirmados rodando o `claude`
+real — inclusive a correção de que `--max-turns` existe.
+
+- **`runner/track_b.py`** (§6) — dirige o `claude -p` isolado no workspace efêmero:
+  monta o argv (`--output-format json`, `--session-id` fixo p/ achar o C2,
+  `--strict-mcp-config`+`--mcp-config` vazio, `--effort`, `--max-budget-usd`,
+  `--max-turns`), limita por budget + **timeout de wall-clock**, roda `verify.sh`
+  da tarefa, e delega a fusão ao collect. `--claude-bin` injeta um harness fake.
+- **`runner/collect.py`** — funde as 3 camadas numa linha do schema:
+  **C1** (result: custo, tokens, turnos, duration_*, ttft nativo, modelUsage →
+  context_window/maxOutput, permission_denials, service_tier/speed/geo),
+  **C2** (transcript: subagentes via `Task`, `isSidechain`, thinking, ferramentas
+  por nome, pico de contexto), **C3** (proxy: TTFT real, usage bruto, provedor,
+  hosts fora da allowlist). Precedência **C3>C1** p/ custo/tokens (§10.1);
+  `métrica=null nunca 0` (§10.3); `subagent_link_confidence` heurístico.
+- ✅ **`tests/test_track_b_offline.py`** (+ `tests/fake_claude.py` emulando o
+  schema 2.1.207) — **25/25**: fusão C1+C2+C3, custo recalculado do C3 (0.04175)
+  vs harness (0.042) com `cost_delta_pct` 0.6% (<2%), TTFT do C3 (850<900 do C1),
+  subagente/thinking/tools/pico-de-contexto do C2, verify + files_written.
+- **Gated na chave** (`.secrets/anthropic`): a campanha real (rodar o `claude`
+  contra instâncias do LEB, 5 reps, mediana). O canário A5 ao vivo também.
+
+## Próximo — Fase 4 / campanha real
+
+Rodar de verdade (precisa de `.secrets/anthropic`): fechar A5 ao vivo + A14
+(overhead da noop pelo proxy), wirar as instâncias do LEB (`LEB_ROOT`) como fonte
+de tarefas da Trilha B, e as **decisões de operador do §14** (quais modelos, nível
+de esforço, juiz, tarefas-armadilha de ambiguidade, política de publicação).
+Endurecimento (§13 Fase 4): container por execução, allowlist de rede no proxy.

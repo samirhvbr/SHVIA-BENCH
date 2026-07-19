@@ -71,7 +71,11 @@ work/                    ephemeral per-task workspaces
 - [x] **Track A runner** (`track_a.py`) + `models.json` + `results.schema.json` —
       streaming, cost recompute, N-reps + variance; validated offline (17/17). Real
       campaign gated on the bench key.
-- [ ] Track B runner (Phase 3)
+- [x] **Track B runner** (`track_b.py` + `collect.py`) — drives isolated
+      `claude -p`, fuses C1 (result) + C2 (transcript) + C3 (proxy); Claude Code
+      2.1.207 surface validated empirically (`config/harness-matrix.md`); offline
+      test 25/25. Real campaign gated on the bench key.
+- [ ] Phase 4 — real campaign (live A5/A14, LEB instances, §14 operator decisions)
 
 ## Requirements
 

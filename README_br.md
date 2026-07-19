@@ -71,7 +71,11 @@ work/                    workspaces efêmeros por tarefa
 - [x] **Runner da Trilha A** (`track_a.py`) + `models.json` + `results.schema.json`
       — streaming, custo recalculado, N-reps + variância; validado offline (17/17).
       Campanha real gated na chave do bench.
-- [ ] Runner da Trilha B (Fase 3)
+- [x] **Runner da Trilha B** (`track_b.py` + `collect.py`) — dirige o `claude -p`
+      isolado, funde C1 (result) + C2 (transcript) + C3 (proxy); surface do Claude
+      Code 2.1.207 validado empiricamente (`config/harness-matrix.md`); teste
+      offline 25/25. Campanha real gated na chave.
+- [ ] Fase 4 — campanha real (A5/A14 ao vivo, instâncias LEB, decisões §14)
 
 ## Requisitos
 
