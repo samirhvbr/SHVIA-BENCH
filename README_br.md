@@ -68,9 +68,11 @@ work/                    workspaces efêmeros por tarefa
 - [ ] **Critério de saída ao vivo** — plantar um MCP real e rodar o `claude` pra
       provar o A5, e medir `context_overhead_tokens` — precisa da chave do bench
       (`.secrets/anthropic`). É o mesmo gate "smoke ao vivo" que persegue o projeto.
-- [x] **Runner da Trilha A** (`track_a.py`) + `models.json` + `results.schema.json`
-      — streaming, custo recalculado, N-reps + variância; validado offline (17/17).
-      Campanha real gated na chave do bench.
+- [x] **Runner da Trilha A** (`track_a.py`) — **multi-vendor**: `config/gateways.json`
+      cobre Anthropic (nativo) + vendors OpenAI-compat (OpenAI, xAI/Grok, DeepSeek,
+      Z.ai/GLM, Novita, OpenRouter, Kilo). Streaming, corpo/auth por vendor, custo
+      recalculado, N-reps + variância. Offline 18/18. Campanha real gated na chave
+      de cada vendor (`.secrets/<vendor>`).
 - [x] **Runner da Trilha B** (`track_b.py` + `collect.py`) — dirige o `claude -p`
       isolado, funde C1 (result) + C2 (transcript) + C3 (proxy); surface do Claude
       Code 2.1.207 validado empiricamente (`config/harness-matrix.md`); teste

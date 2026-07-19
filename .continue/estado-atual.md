@@ -116,9 +116,34 @@ real — inclusive a correção de que `--max-turns` existe.
 - **Gated na chave** (`.secrets/anthropic`): a campanha real (rodar o `claude`
   contra instâncias do LEB, 5 reps, mediana). O canário A5 ao vivo também.
 
+## Multi-vendor / Trilha A (19/07/2026, 0.4.0)
+
+`config/gateways.json` — registro de vendors com 2 shapes: `kind=anthropic`
+(Messages API) e `kind=openai` (/chat/completions OpenAI-compat). Cobre
+**Anthropic, OpenAI, xAI/Grok, DeepSeek, Z.ai/GLM, Novita, OpenRouter, Kilo**
+(+ 2 dummies). Endpoints/auth marcados `validate:true` = melhor-conhecido, a
+confirmar no 1º smoke de cada um (disciplina §15).
+
+- `track_a.py` virou **gateway-aware**: monta corpo Anthropic OU OpenAI, parseia
+  os dois SSE, auth x-api-key/version OU Bearer(+extra_headers), provider-pin do
+  OpenRouter (V10, `x-openrouter-provider` → `provider_effective`). Sampling
+  por-modelo: só manda `temperature`/`top_p` se `gateway.sampling_ok` E
+  `model.sampling_ok != false` (Anthropic 4.6+ e raciocínio o*/gpt-5/reasoner = 400).
+- `config/models.json` — Anthropic com pricing REAL; demais vendors = **templates**
+  (id/preço `confirmar/preencher`, roster = operador §14 Q1).
+- `run.sh` — segredos multi-vendor: cada `.secrets/<vendor>` → `<VENDOR>_API_KEY`
+  injetado na allowlist; **todos** os `*_API_KEY` redigidos no env.snapshot.
+- ✅ `tests/test_track_a_offline.py` (+ `dummy_openai.py`) — **18/18** nos dois
+  shapes; e prova de que o valor de 2 segredos plantados **não vaza** em nenhum
+  artefato do run.
+
+**Trilha B multi-vendor (aberto, §14 Q2):** o Claude Code só dirige modelos
+Anthropic. GPT/Grok/DeepSeek/etc. **num harness** precisam de outro harness (ex.
+Kilo Code), validado como o Claude Code foi. Decisão de operador — ver Próximo.
+
 ## Próximo — Fase 4 / campanha real
 
-Rodar de verdade (precisa de `.secrets/anthropic`): fechar A5 ao vivo + A14
+Rodar de verdade (precisa de `.secrets/<vendor>`): fechar A5 ao vivo + A14
 (overhead da noop pelo proxy), wirar as instâncias do LEB (`LEB_ROOT`) como fonte
 de tarefas da Trilha B, e as **decisões de operador do §14** (quais modelos, nível
 de esforço, juiz, tarefas-armadilha de ambiguidade, política de publicação).

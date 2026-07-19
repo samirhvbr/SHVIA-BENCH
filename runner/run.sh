@@ -58,7 +58,6 @@ RUN_ID="$(date -u +%Y-%m-%dT%H-%M-%SZ)_$(openssl rand -hex 3)"
 SANDBOX_HOME="$BENCH_ROOT/profile"
 RUN_DIR="$BENCH_ROOT/runs/$RUN_ID"
 WORK="$WORK_ROOT/$RUN_ID/$TASK_ID"
-SECRET_FILE="$BENCH_ROOT/.secrets/anthropic"
 
 mkdir -p "$RUN_DIR"
 
@@ -98,13 +97,18 @@ if [ -n "$GOLDEN_DIR" ]; then
     git -C "$WORK" -c commit.gpgsign=false commit -q --allow-empty -m baseline 2>/dev/null || true
 fi
 
-# --- Segredo: injetado individualmente, tolerante à ausência (offline) -----
-API_KEY=""
-if [ -f "$SECRET_FILE" ]; then
-  API_KEY="$(cat "$SECRET_FILE")"
-else
-  echo "run.sh: aviso — $SECRET_FILE ausente; rodando SEM ANTHROPIC_API_KEY (ok p/ checks offline; chamadas ao modelo falharão)." >&2
+# --- Segredos MULTI-VENDOR: cada .secrets/<vendor> → <VENDOR>_API_KEY, injetado
+#     individualmente, tolerante à ausência (offline). Nunca `source`, nunca argv.
+SECRET_NAMES=(); SECRET_VALUES=(); SECRET_COUNT=0
+if [ -d "$BENCH_ROOT/.secrets" ]; then
+  for sf in "$BENCH_ROOT"/.secrets/*; do
+    [ -f "$sf" ] || continue
+    b="$(basename "$sf")"; [ "$b" = ".gitkeep" ] && continue
+    kn="$(printf '%s' "$b" | tr '[:lower:]-' '[:upper:]_')_API_KEY"
+    SECRET_NAMES+=("$kn"); SECRET_VALUES+=("$(cat "$sf")"); SECRET_COUNT=$((SECRET_COUNT+1))
+  done
 fi
+[ "$SECRET_COUNT" -eq 0 ] && echo "run.sh: aviso — nenhum segredo em .secrets/ (ok p/ checks offline; chamadas ao modelo falharão)." >&2
 
 # --- PATH sanitizado -------------------------------------------------------
 SAFE_PATH="/usr/local/bin:/usr/bin:/bin"
@@ -130,15 +134,15 @@ ENVCMD=(env -i
 )
 # Chaves esperadas no ambiente do filho (entrada do check A7).
 EXPECTED_KEYS="PATH HOME XDG_CONFIG_HOME XDG_CACHE_HOME XDG_DATA_HOME TERM LANG TZ CLAUDE_CONFIG_DIR CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC DISABLE_AUTOUPDATER DISABLE_AUTOCOMPACT CLAUDE_CODE_EFFORT_LEVEL MAX_THINKING_TOKENS ANTHROPIC_BASE_URL SHVIA_RUN_ID SHVIA_TASK_ID"
-if [ -n "$API_KEY" ]; then
-  ENVCMD+=(ANTHROPIC_API_KEY="$API_KEY")
-  EXPECTED_KEYS="$EXPECTED_KEYS ANTHROPIC_API_KEY"
-fi
+for i in "${!SECRET_NAMES[@]}"; do
+  ENVCMD+=("${SECRET_NAMES[$i]}=${SECRET_VALUES[$i]}")
+  EXPECTED_KEYS="$EXPECTED_KEYS ${SECRET_NAMES[$i]}"
+done
 
-# --- env.snapshot: o ambiente EXATO do filho, com APENAS a chave secreta
-#     redigida. Artefato de auditoria + entrada dos checks A7/A12/A13. --------
+# --- env.snapshot: o ambiente EXATO do filho, com TODA chave *_API_KEY redigida.
+#     Artefato de auditoria + entrada dos checks A7/A12/A13. ------------------
 "${ENVCMD[@]}" env \
-  | sed 's/^ANTHROPIC_API_KEY=.*/ANTHROPIC_API_KEY=***REDACTED***/' \
+  | sed -E 's/^([A-Za-z0-9_]*_API_KEY)=.*/\1=***REDACTED***/' \
   | sort > "$RUN_DIR/env.snapshot"
 
 # --- Metadados do run (não é o manifesto de campanha; é o traço deste run) --
@@ -153,7 +157,7 @@ cat > "$RUN_DIR/run.meta.json" <<JSON
   "proxy_base_url": "http://$PROXY_HOST:$PROXY_PORT",
   "effort_pinned": "$EFFORT_PINNED",
   "thinking_pinned": "$THINKING_PINNED",
-  "secret_present": $( [ -n "$API_KEY" ] && echo true || echo false )
+  "secrets_present": $SECRET_COUNT
 }
 JSON
 

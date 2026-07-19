@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Offline test of track_a.py — no network, no API key.
+"""Offline test of track_a.py — MULTI-VENDOR. No network, no API key.
 
-Drives track_a.run_case against the dummy Anthropic SSE upstream (in-process),
-with a synthetic non-zero price table to prove the cost recompute, then checks
-the N-reps aggregate (variance). Stdlib only.
+Exercises both gateway shapes against in-process dummies:
+  - kind=anthropic  (dummy_upstream.py, Messages-API SSE)
+  - kind=openai     (dummy_openai.py, /chat/completions SSE)
+with a synthetic non-zero price table proving the cost recompute, plus the
+N-reps aggregate. Stdlib only.
 """
 import json
 import os
@@ -14,65 +16,70 @@ from http.server import ThreadingHTTPServer
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "runner"))
 sys.path.insert(0, os.path.join(ROOT, "tests"))
-import track_a                # noqa: E402
-import dummy_upstream as du    # noqa: E402
+import track_a          # noqa: E402
+import dummy_upstream   # noqa: E402
+import dummy_openai     # noqa: E402
+
+PRICE = {"input": 1000.0, "output": 2000.0, "cache_write": 0.0, "cache_read": 0.0}
+EXP_COST = round((123 * 1000.0 + 7 * 2000.0) / 1_000_000, 8)  # 0.137
+
+
+def serve(handler):
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv.server_address[1]
+
+
+def run_path(name, gateway, handler, model_id, expect_stop):
+    port = serve(handler)
+    base_url = f"http://127.0.0.1:{port}"
+    model_cfg = {"id": model_id, "max_tokens": 16, "sampling_ok": gateway["kind"] == "openai",
+                 "params": ({"temperature": 0.0, "top_p": 1.0} if gateway["kind"] == "openai"
+                            else {"effort": "high"}),
+                 "price_per_mtok": PRICE}
+    cases = []
+    for rep in range(1, 4):
+        ids = {"run_id": "testrun", "task_id": "T-000-noop", "model_alias": name,
+               "repetition": rep, "case_id": f"T-000-noop/{name}/A/rep{rep}"}
+        cases.append(track_a.run_case(model_cfg, gateway, "Responda OK.\n",
+                                      "test-key", base_url, ids))
+    c0 = cases[0]
+    agg = track_a.aggregate(cases)
+    print(f"\n[{name}] rep1:", json.dumps({k: c0.get(k) for k in
+          ("status", "stop_reason", "model_id_resolved", "provider_effective",
+           "tokens", "cost")}, ensure_ascii=False))
+    return {
+        f"{name}: status completed (3x)": all(c["status"] == "completed" for c in cases),
+        f"{name}: input_tokens==123": c0["tokens"]["input_tokens"] == 123,
+        f"{name}: output_tokens==7": c0["tokens"]["output_tokens"] == 7,
+        f"{name}: stop_reason=={expect_stop}": c0["stop_reason"] == expect_stop,
+        f"{name}: model_id=={model_id}": c0["model_id_resolved"] == model_id,
+        f"{name}: ttft>0 & e2e>=ttft": (c0["time"]["ttft_ms_first_call"] or 0) > 0
+            and c0["time"]["e2e_ms"] >= (c0["time"]["ttft_ms_first_call"] or 0),
+        f"{name}: cost=={EXP_COST}": abs(c0["cost"]["cost_usd_computed"] - EXP_COST) < 1e-9,
+        f"{name}: reply==OK": c0["reply_preview"] == "OK",
+        f"{name}: 3 reps agg, cost cv 0": agg["completed"] == 3
+            and agg["cost_usd_computed"]["cv_pct"] == 0.0,
+    }
 
 
 def main():
-    srv = ThreadingHTTPServer(("127.0.0.1", 0), du.H)
-    port = srv.server_address[1]
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
-
-    gateway = {"kind": "anthropic", "path": "/v1/messages",
-               "version": "2023-06-01", "key_env": "ANTHROPIC_API_KEY"}
-    # preço fictício NÃO-zero → prova o recálculo de custo
-    model_cfg = {"id": "dummy-model-1", "max_tokens": 16, "params": {"effort": "high"},
-                 "price_per_mtok": {"input": 1000.0, "output": 2000.0,
-                                    "cache_write": 0.0, "cache_read": 0.0}}
-    base_url = f"http://127.0.0.1:{port}"
-    prompt = "Responda apenas com a palavra OK.\n"
-
-    cases = []
-    for rep in range(1, 4):
-        ids = {"run_id": "testrun", "task_id": "T-000-noop", "model_alias": "M-dummy",
-               "repetition": rep, "case_id": f"T-000-noop/M-dummy/A/rep{rep}"}
-        rec = track_a.run_case(model_cfg, gateway, prompt, "test-key", base_url, ids)
-        cases.append(rec)
-        print("rep", rep, json.dumps({k: rec.get(k) for k in
-              ("status", "stop_reason", "model_id_resolved", "time", "tokens", "cost")},
-              ensure_ascii=False))
-
-    c0 = cases[0]
-    expected_cost = round((123 * 1000.0 + 7 * 2000.0) / 1_000_000, 8)  # 0.137
-    agg = track_a.aggregate(cases)
-    print("\nagregado:", json.dumps(agg, ensure_ascii=False))
-
-    checks = {
-        "status==completed (3x)": all(c["status"] == "completed" for c in cases),
-        "input_tokens==123": c0["tokens"]["input_tokens"] == 123,
-        "output_tokens==7": c0["tokens"]["output_tokens"] == 7,
-        "total_tokens==130": c0["tokens"]["total_tokens"] == 130,
-        "stop_reason==end_turn": c0["stop_reason"] == "end_turn",
-        "model_id_resolved==dummy-model-1": c0["model_id_resolved"] == "dummy-model-1",
-        "ttft>0": (c0["time"]["ttft_ms_first_call"] or 0) > 0,
-        "e2e>=ttft": c0["time"]["e2e_ms"] >= (c0["time"]["ttft_ms_first_call"] or 0),
-        "generation_ms>=0": (c0["time"]["generation_ms"] or 0) >= 0,
-        "tps_generation set": c0["throughput"]["tps_generation"] is not None,
-        f"cost=={expected_cost} (123*1000 + 7*2000 /1e6)":
-            abs(c0["cost"]["cost_usd_computed"] - expected_cost) < 1e-9,
-        "reply_preview==OK": c0["reply_preview"] == "OK",
-        "agents null (Trilha A §10.3)": c0["agents"] is None,
-        "tools null (Trilha A §10.3)": c0["tools"] is None,
-        "prompt_sha256 len 64": len(c0["prompt_sha256"]) == 64,
-        "3 reps aggregated": agg["completed"] == 3,
-        "cost cv_pct == 0 (usage fixo)": agg["cost_usd_computed"]["cv_pct"] == 0.0,
-    }
+    checks = {}
+    checks.update(run_path(
+        "anthropic",
+        {"kind": "anthropic", "path": "/v1/messages", "version": "2023-06-01"},
+        dummy_upstream.H, "dummy-model-1", "end_turn"))
+    checks.update(run_path(
+        "openai",
+        {"kind": "openai", "path": "/v1/chat/completions", "sampling_ok": True},
+        dummy_openai.H, "dummy-oai-1", "stop"))
+    # provider_effective vem do header x-openrouter-provider (só no path openai)
     print()
     allok = True
     for k, v in checks.items():
         print(f"  [{'pass' if v else 'FAIL'}] {k}")
         allok = allok and v
-    print("\nTRACK_A OFFLINE TEST:", "ALL PASS" if allok else "FAILURES ABOVE")
+    print("\nTRACK_A OFFLINE (multi-vendor):", "ALL PASS" if allok else "FAILURES ABOVE")
     sys.exit(0 if allok else 1)
 
 

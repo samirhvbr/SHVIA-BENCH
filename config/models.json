@@ -1,52 +1,22 @@
 {
-  "_note": "Catálogo de modelos da campanha (§8.1). O roster REAL é decisão do operador (§14 Q1). ids DATADOS quando aplicável; 'latest' é proibido (§8.2).",
-  "_sampling_note": "Modelos Anthropic 4.6+ (Opus 4.8, Sonnet 5, Fable 5, Haiku 4.5) REJEITAM temperature/top_p/top_k e budget_tokens com 400. A §5.2 ('congelar temperature=0/top_p=1') NÃO se aplica a eles — o knob congelado por campanha é output_config.effort + thinking (V17). O track_a nunca envia sampling param.",
-  "gateway": {
-    "kind": "anthropic",
-    "base_url_env": "ANTHROPIC_BASE_URL",
-    "base_url_default": "https://api.anthropic.com",
-    "path": "/v1/messages",
-    "version": "2023-06-01",
-    "key_env": "ANTHROPIC_API_KEY"
-  },
+  "_note": "Catálogo de modelos. Cada modelo referencia um gateway de config/gateways.json. Só as entradas Anthropic têm pricing REAL (via skill claude-api); as demais são TEMPLATES multi-vendor — id/preço marcados 'confirmar/preencher' são decisão do operador (§14 Q1) e devem ser fixados no manifesto antes de uma campanha. ids DATADOS quando aplicável; 'latest' é proibido (§8.2).",
+  "_sampling_note": "Anthropic 4.6+ e modelos de raciocínio (o*/gpt-5/deepseek-reasoner) rejeitam temperature/top_p → sampling_ok:false por-modelo; o track_a só manda sampling se gateway.sampling_ok E model.sampling_ok != false.",
   "models": {
-    "M-opus48": {
-      "id": "claude-opus-4-8",
-      "context_window": 1000000,
-      "max_tokens": 8192,
-      "params": {"effort": "high", "thinking": "adaptive"},
-      "price_per_mtok": {"input": 5.0, "output": 25.0, "cache_write": 6.25, "cache_read": 0.5}
-    },
-    "M-sonnet5": {
-      "id": "claude-sonnet-5",
-      "context_window": 1000000,
-      "max_tokens": 8192,
-      "params": {"effort": "high", "thinking": "adaptive"},
-      "price_per_mtok": {"input": 3.0, "output": 15.0, "cache_write": 3.75, "cache_read": 0.3},
-      "_intro_note": "preço introdutório $2/$10 por Mtok até 2026-08-31 — se a campanha rodar antes, pinar {input:2.0,output:10.0,cache_write:2.5,cache_read:0.2} no manifesto"
-    },
-    "M-haiku45": {
-      "id": "claude-haiku-4-5",
-      "context_window": 200000,
-      "max_tokens": 8192,
-      "params": {"effort": "high"},
-      "price_per_mtok": {"input": 1.0, "output": 5.0, "cache_write": 1.25, "cache_read": 0.1}
-    },
-    "M-fable5": {
-      "id": "claude-fable-5",
-      "context_window": 1000000,
-      "max_tokens": 8192,
-      "params": {"effort": "high"},
-      "_thinking_note": "Fable 5: thinking é sempre on; NÃO enviar campo thinking (400). effort controla a profundidade.",
-      "price_per_mtok": {"input": 10.0, "output": 50.0, "cache_write": 12.5, "cache_read": 1.0}
-    },
-    "M-dummy": {
-      "id": "dummy-model-1",
-      "context_window": 200000,
-      "max_tokens": 16,
-      "params": {"effort": "high"},
-      "price_per_mtok": {"input": 0.0, "output": 0.0, "cache_write": 0.0, "cache_read": 0.0},
-      "_note": "Modelo fake p/ validar o track_a offline via tests/dummy_upstream.py (aponte ANTHROPIC_BASE_URL pro dummy)."
-    }
+    "M-opus48":  {"gateway": "anthropic", "id": "claude-opus-4-8", "context_window": 1000000, "max_tokens": 8192, "sampling_ok": false, "params": {"effort": "high", "thinking": "adaptive"}, "price_per_mtok": {"input": 5.0, "output": 25.0, "cache_write": 6.25, "cache_read": 0.5}},
+    "M-sonnet5": {"gateway": "anthropic", "id": "claude-sonnet-5", "context_window": 1000000, "max_tokens": 8192, "sampling_ok": false, "params": {"effort": "high", "thinking": "adaptive"}, "price_per_mtok": {"input": 3.0, "output": 15.0, "cache_write": 3.75, "cache_read": 0.3}, "_intro_note": "intro $2/$10 até 2026-08-31"},
+    "M-haiku45": {"gateway": "anthropic", "id": "claude-haiku-4-5", "context_window": 200000, "max_tokens": 8192, "sampling_ok": false, "params": {"effort": "high"}, "price_per_mtok": {"input": 1.0, "output": 5.0, "cache_write": 1.25, "cache_read": 0.1}},
+    "M-fable5":  {"gateway": "anthropic", "id": "claude-fable-5", "context_window": 1000000, "max_tokens": 8192, "sampling_ok": false, "params": {"effort": "high"}, "price_per_mtok": {"input": 10.0, "output": 50.0, "cache_write": 12.5, "cache_read": 1.0}},
+
+    "M-gpt5":    {"gateway": "openai", "id": "gpt-5", "sampling_ok": false, "max_tokens": 8192, "params": {"reasoning_effort": "high"}, "price_per_mtok": {"input": 0.0, "output": 0.0}, "_id_note": "confirmar id datado", "_price_note": "preencher (§14 Q1)"},
+    "M-grok4":   {"gateway": "xai", "id": "grok-4", "sampling_ok": true, "max_tokens": 8192, "params": {"temperature": 0.0, "top_p": 1.0}, "price_per_mtok": {"input": 0.0, "output": 0.0}, "_id_note": "confirmar", "_price_note": "preencher"},
+    "M-deepseek-v3":  {"gateway": "deepseek", "id": "deepseek-chat", "sampling_ok": true, "max_tokens": 8192, "params": {"temperature": 0.0, "top_p": 1.0}, "price_per_mtok": {"input": 0.0, "output": 0.0}, "_price_note": "preencher"},
+    "M-deepseek-r1":  {"gateway": "deepseek", "id": "deepseek-reasoner", "sampling_ok": false, "max_tokens": 8192, "params": {}, "price_per_mtok": {"input": 0.0, "output": 0.0}, "_note": "reasoner ignora temperature", "_price_note": "preencher"},
+    "M-glm":     {"gateway": "zai", "id": "glm-4.6", "sampling_ok": true, "max_tokens": 8192, "params": {"temperature": 0.0, "top_p": 1.0}, "price_per_mtok": {"input": 0.0, "output": 0.0}, "_id_note": "confirmar", "_price_note": "preencher"},
+    "M-qwen-coder-or": {"gateway": "openrouter", "id": "qwen/qwen-2.5-coder-32b-instruct", "sampling_ok": true, "max_tokens": 8192, "params": {"temperature": 0.0, "top_p": 1.0}, "provider_pin": null, "price_per_mtok": {"input": 0.0, "output": 0.0}, "_pin_note": "provider.order + allow_fallbacks:false (V10)", "_price_note": "preencher"},
+    "M-deepseek-novita": {"gateway": "novita", "id": "deepseek/deepseek-v3", "sampling_ok": true, "max_tokens": 8192, "params": {"temperature": 0.0, "top_p": 1.0}, "price_per_mtok": {"input": 0.0, "output": 0.0}, "_id_note": "confirmar slug Novita", "_price_note": "preencher"},
+    "M-kilo":    {"gateway": "kilo", "id": "anthropic/claude-opus-4-8", "sampling_ok": true, "max_tokens": 8192, "params": {}, "price_per_mtok": {"input": 0.0, "output": 0.0}, "_note": "Kilo como provider; id/slug e preço a confirmar", "_price_note": "preencher"},
+
+    "M-dummy":     {"gateway": "dummy-anthropic", "id": "dummy-model-1", "max_tokens": 16, "sampling_ok": false, "params": {"effort": "high"}, "price_per_mtok": {"input": 0.0, "output": 0.0, "cache_write": 0.0, "cache_read": 0.0}, "_note": "teste offline (Anthropic)"},
+    "M-dummy-oai": {"gateway": "dummy-openai", "id": "dummy-oai-1", "max_tokens": 16, "sampling_ok": true, "params": {"temperature": 0.0, "top_p": 1.0}, "price_per_mtok": {"input": 0.0, "output": 0.0}, "_note": "teste offline (OpenAI-compat)"}
   }
 }

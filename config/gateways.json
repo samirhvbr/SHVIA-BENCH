@@ -1,0 +1,64 @@
+{
+  "_note": "Registro de gateways (vendors). kind=anthropic → Messages API (x-api-key + anthropic-version, SSE Anthropic). kind=openai → /chat/completions OpenAI-compat (Bearer, SSE OpenAI). `validate:true` = endpoint/auth melhor-conhecido, confirmar no 1º smoke com a chave do vendor (mesma disciplina das flags do Claude Code, §15). `base_url_env` permite injetar um proxy por vendor (ANTHROPIC_BASE_URL etc.). `sampling_ok` = o vendor aceita temperature/top_p por default (modelos de raciocínio podem exigir sampling_ok:false por-modelo).",
+  "gateways": {
+    "anthropic": {
+      "kind": "anthropic", "base_url": "https://api.anthropic.com", "path": "/v1/messages",
+      "base_url_env": "ANTHROPIC_BASE_URL", "version": "2023-06-01",
+      "auth": "x-api-key", "key_env": "ANTHROPIC_API_KEY",
+      "allowed_hosts": ["api.anthropic.com"], "sampling_ok": false, "validate": false,
+      "_note": "modelos 4.6+ rejeitam temperature/top_p/budget_tokens (400) — knob = output_config.effort"
+    },
+    "openai": {
+      "kind": "openai", "base_url": "https://api.openai.com", "path": "/v1/chat/completions",
+      "base_url_env": "OPENAI_BASE_URL", "auth": "bearer", "key_env": "OPENAI_API_KEY",
+      "allowed_hosts": ["api.openai.com"], "sampling_ok": true, "validate": false,
+      "_note": "modelos de raciocínio (o*/gpt-5 reasoning) rejeitam temperature != 1 → sampling_ok:false por-modelo; usam reasoning_effort"
+    },
+    "xai": {
+      "kind": "openai", "base_url": "https://api.x.ai", "path": "/v1/chat/completions",
+      "base_url_env": "XAI_BASE_URL", "auth": "bearer", "key_env": "XAI_API_KEY",
+      "allowed_hosts": ["api.x.ai"], "sampling_ok": true, "validate": false, "_vendor": "Grok (xAI)"
+    },
+    "deepseek": {
+      "kind": "openai", "base_url": "https://api.deepseek.com", "path": "/chat/completions",
+      "base_url_env": "DEEPSEEK_BASE_URL", "auth": "bearer", "key_env": "DEEPSEEK_API_KEY",
+      "allowed_hosts": ["api.deepseek.com"], "sampling_ok": true, "validate": true,
+      "_note": "path pode ser /v1/chat/completions; deepseek-reasoner ignora temperature"
+    },
+    "zai": {
+      "kind": "openai", "base_url": "https://api.z.ai", "path": "/api/paas/v4/chat/completions",
+      "base_url_env": "ZAI_BASE_URL", "auth": "bearer", "key_env": "ZAI_API_KEY",
+      "allowed_hosts": ["api.z.ai", "open.bigmodel.cn"], "sampling_ok": true, "validate": true,
+      "_vendor": "GLM (Z.ai / Zhipu)", "_note": "endpoint varia entre z.ai e open.bigmodel.cn (v4) — confirmar"
+    },
+    "novita": {
+      "kind": "openai", "base_url": "https://api.novita.ai", "path": "/v3/openai/chat/completions",
+      "base_url_env": "NOVITA_BASE_URL", "auth": "bearer", "key_env": "NOVITA_API_KEY",
+      "allowed_hosts": ["api.novita.ai"], "sampling_ok": true, "validate": true
+    },
+    "openrouter": {
+      "kind": "openai", "base_url": "https://openrouter.ai/api", "path": "/v1/chat/completions",
+      "base_url_env": "OPENROUTER_BASE_URL", "auth": "bearer", "key_env": "OPENROUTER_API_KEY",
+      "allowed_hosts": ["openrouter.ai"], "sampling_ok": true, "provider_pin": true, "validate": false,
+      "extra_headers": {"HTTP-Referer": "https://github.com/samirhvbr/SHVIA-BENCH", "X-Title": "SHVIA-BENCH"},
+      "_note": "provider.order + allow_fallbacks:false (V10); header x-openrouter-provider vira o provider_effective (o proxy já loga)"
+    },
+    "kilo": {
+      "kind": "openai", "base_url": "https://api.kilocode.ai", "path": "/v1/chat/completions",
+      "base_url_env": "KILO_BASE_URL", "auth": "bearer", "key_env": "KILO_API_KEY",
+      "allowed_hosts": ["api.kilocode.ai", "kilocode.ai"], "sampling_ok": true, "validate": true,
+      "_note": "Kilo como PROVIDER de modelos (OpenAI-compat) — endpoint a confirmar. O Kilo CODE (harness/agente) é outra coisa: entra na Trilha B (§14 Q2)."
+    },
+    "dummy-anthropic": {
+      "kind": "anthropic", "base_url": "http://127.0.0.1:0", "path": "/v1/messages",
+      "base_url_env": "ANTHROPIC_BASE_URL", "version": "2023-06-01",
+      "auth": "x-api-key", "key_env": "ANTHROPIC_API_KEY",
+      "allowed_hosts": ["127.0.0.1"], "sampling_ok": false, "validate": false, "_note": "só teste offline"
+    },
+    "dummy-openai": {
+      "kind": "openai", "base_url": "http://127.0.0.1:0", "path": "/v1/chat/completions",
+      "base_url_env": "OPENAI_BASE_URL", "auth": "bearer", "key_env": "OPENAI_API_KEY",
+      "allowed_hosts": ["127.0.0.1"], "sampling_ok": true, "validate": false, "_note": "só teste offline"
+    }
+  }
+}

@@ -68,9 +68,11 @@ work/                    ephemeral per-task workspaces
 - [ ] **Live exit criterion** — planting a real MCP and running `claude` to prove
       A5, plus measuring `context_overhead_tokens` — needs the bench API key
       (`.secrets/anthropic`). This is the project's standing "smoke ao vivo" gate.
-- [x] **Track A runner** (`track_a.py`) + `models.json` + `results.schema.json` —
-      streaming, cost recompute, N-reps + variance; validated offline (17/17). Real
-      campaign gated on the bench key.
+- [x] **Track A runner** (`track_a.py`) — **multi-vendor**: `config/gateways.json`
+      covers Anthropic (native) + OpenAI-compatible vendors (OpenAI, xAI/Grok,
+      DeepSeek, Z.ai/GLM, Novita, OpenRouter, Kilo). Streaming, per-vendor request
+      shaping + auth, cost recompute, N-reps + variance. Offline 18/18. Real
+      campaign gated on each vendor's key (`.secrets/<vendor>`).
 - [x] **Track B runner** (`track_b.py` + `collect.py`) — drives isolated
       `claude -p`, fuses C1 (result) + C2 (transcript) + C3 (proxy); Claude Code
       2.1.207 surface validated empirically (`config/harness-matrix.md`); offline
