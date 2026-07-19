@@ -206,9 +206,29 @@ reais da Trilha B — lido do repo, **nunca duplicado** aqui.
 - ✅ **`tests/test_leb_offline.py` (7/7)** — prova a preparação (enunciado+manifesto,
   golden=code/, matriz NÃO vaza) e o comando de verify, sem docker/chave.
 
-**Falta pra rodar um caso LEB de VERDADE:** é um passo AO VIVO (como o smoke) —
-precisa das imagens docker (mysql8+php8.4) + um run real do modelo. O plumbing está
-provado offline; `runner/campaign_leb.sh M-opus48 LEB-100-A` roda quando quiser.
+### Caso LEB AO VIVO — completo (0.6.1)
+
+Rodado `campaign_leb.sh M-haiku45 LEB-100-A 1` ao vivo:
+- **self-test do LEB** (docker, sem API): `regression:false`, 4 probes PLANTADA no
+  legado, 61s. Metade docker validada.
+- **caso real**: Haiku editou o legado em **28 turnos** (US$0,30); o LEB pontuou:
+  **`passed=True, regressao=False, probes=2/4`** (2 das 4 falhas probadas corrigidas,
+  sem quebrar compat). **Resultado de benchmark legítimo, ponta a ponta ao vivo.**
+
+**Dois bugs arquiteturais que só o caso LEB ao vivo pegaria — corrigidos:**
+1. O **verify do LEB (docker) quebrava sob `env -i`** (`docker compose` precisa do
+   HOME real / `~/.docker/cli-plugins`) → erro `unknown flag: --rm`. **Fix:** o
+   verify saiu do `track_b` (sanitizado) — vira **pendente** e roda no **driver
+   pós-run** (`leb.py patch-results`, ambiente completo). O isolamento (`env -i`) é
+   pro MODELO; o avaliador precisa do ambiente cheio.
+2. **Reps não eram independentes** (`--reps N` rodava no MESMO workspace →
+   rep2 via as edições da rep1). **Fix:** o loop de reps foi pro **driver** —
+   cada rep = um `run.sh` com workspace FRESCO do golden (PROTOCOL §4). `track_b`
+   ganhou `--rep` p/ rotular.
+
+Custo/tokens da Trilha B via `collect`: `cost_delta` ~5% neste caso multi-turno
+(C3 do proxy pega só parte do usage do CC — o follow-up #2; o C1 do harness é a
+verdade e o custo fica certo).
 
 ## Próximo — Fase 4 / campanha real
 

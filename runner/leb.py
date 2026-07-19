@@ -117,18 +117,47 @@ def verify(leb_root, instance, submission_dir, out_json=None, dry_run=False, tim
     return res
 
 
+def patch_results(leb_root, results_path):
+    """Pós-run, no AMBIENTE COMPLETO (fora do env -i): para cada linha com
+    verify.pending=='leb', roda o verify do LEB (docker) contra o workspace e
+    patcha `verification` + `status`. Reescreve o results.jsonl."""
+    recs = [json.loads(l) for l in open(results_path, encoding="utf-8") if l.strip()]
+    done = 0
+    for rec in recs:
+        v = rec.get("verification") or {}
+        if v.get("pending") != "leb":
+            continue
+        ws, inst = v.get("workspace"), v.get("leb_instance")
+        if not ws or not os.path.isdir(ws):
+            rec["verification"] = {"passed": None, "note": f"workspace sumiu: {ws}"}
+            continue
+        res = verify(leb_root, inst, ws)
+        rec["verification"] = res
+        if res.get("passed") is False:
+            rec["status"] = "failed_verification"
+        done += 1
+    with open(results_path, "w", encoding="utf-8") as f:
+        for rec in recs:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    return done
+
+
 if __name__ == "__main__":
     import argparse
-    ap = argparse.ArgumentParser(description="adapter LEB (prepare/verify)")
-    ap.add_argument("cmd", choices=["prepare", "verify"])
+    ap = argparse.ArgumentParser(description="adapter LEB (prepare/verify/patch-results)")
+    ap.add_argument("cmd", choices=["prepare", "verify", "patch-results"])
     ap.add_argument("--leb-root", default=os.path.expanduser("~/x/AI-BENCHMARK"))
-    ap.add_argument("--instance", required=True)
+    ap.add_argument("--instance")
     ap.add_argument("--submission")
+    ap.add_argument("--results")
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
     if a.cmd == "prepare":
         r = prepare(a.leb_root, a.instance)
         print(f"golden: {r['golden_dir']}\n--- prompt ({len(r['prompt'])} chars) ---\n{r['prompt'][:600]}...")
-    else:
+    elif a.cmd == "verify":
         print(json.dumps(verify(a.leb_root, a.instance, a.submission or ".",
                                  dry_run=a.dry_run), ensure_ascii=False, indent=2))
+    else:  # patch-results
+        n = patch_results(a.leb_root, a.results)
+        print(f"leb: {n} caso(s) verificado(s) → {a.results}")

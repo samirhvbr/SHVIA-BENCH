@@ -130,6 +130,8 @@ def main():
     ap.add_argument("--model", required=True)
     ap.add_argument("--task", required=True)
     ap.add_argument("--reps", type=int, default=1)
+    ap.add_argument("--rep", type=int, default=None,
+                    help="rótulo do nº da rep (p/ o driver rodar reps independentes com --reps 1)")
     ap.add_argument("--out", default=None)
     ap.add_argument("--models", default=None)
     ap.add_argument("--proxy-log", default=os.environ.get("SHVIA_PROXY_LOG"))
@@ -188,15 +190,16 @@ def main():
         if hr["status"] not in ("completed", "failed_verification"):
             verify = {"passed": None, "exit_code": None}
         elif args.leb_instance:
-            import leb
-            verify = leb.verify(args.leb_root, args.leb_instance, workspace)
-            # o LEB decide o status: exit 0 = sem regressão; regressão = falha
-            if verify.get("passed") is False:
-                hr["status"] = "failed_verification"
+            # verify do LEB roda docker → NÃO pode ser aqui (env -i quebra o
+            # `docker compose`, que precisa do HOME real). Fica PENDENTE; o driver
+            # (campaign_leb.sh) roda o leb.verify pós-run, no ambiente completo.
+            verify = {"passed": None, "pending": "leb", "workspace": workspace,
+                      "leb_instance": args.leb_instance}
         else:
             verify = run_verify(task_dir, workspace)
+        rep_lbl = args.rep if args.rep is not None else rep
         ids = {"run_id": run_id, "task_id": args.task, "model_alias": args.model,
-               "repetition": rep, "case_id": f"{args.task}/{args.model}/B/rep{rep}"}
+               "repetition": rep_lbl, "case_id": f"{args.task}/{args.model}/B/rep{rep_lbl}"}
         rec = collect_mod.collect(hr, args.proxy_log, model_cfg, ids, verify)
         line = json.dumps(rec, ensure_ascii=False)
         if args.out:

@@ -41,13 +41,23 @@ PROXY_PID=$!; trap 'kill "$PROXY_PID" 2>/dev/null || true' EXIT
 for i in $(seq 1 50); do nc -z 127.0.0.1 8787 2>/dev/null && break; done
 
 echo "== caso LEB: instância=$INSTANCE · modelo=$MODEL · harness=$HARNESS · reps=$REPS =="
-# caminho ABSOLUTO pro track_b (run.sh faz cd pro workspace efêmero); golden = code/ da instância.
-BENCH_EXTRA_PATH="$EXTRA" \
-  "$ROOT/runner/run.sh" --task "leb-${INSTANCE}" --golden "$GOLDEN" -- \
-  python3 "$ROOT/runner/track_b.py" \
-    --harness "$HARNESS" --model "$MODEL" --task "leb-${INSTANCE}" \
-    --leb-root "$LEB_ROOT" --leb-instance "$INSTANCE" \
-    --reps "$REPS" --proxy-log "$PROXYLOG" --out "$OUT"
+# Reps INDEPENDENTES (PROTOCOL §4): cada rep = um run.sh com workspace FRESCO do
+# golden. Caminho ABSOLUTO pro track_b (run.sh faz cd pro workspace). O verify do
+# LEB (docker) NÃO roda aqui — fica pendente e é feito pós-run (env completo).
+for rep in $(seq 1 "$REPS"); do
+  echo "-- rep $rep/$REPS (workspace fresco) --"
+  BENCH_EXTRA_PATH="$EXTRA" \
+    "$ROOT/runner/run.sh" --task "leb-${INSTANCE}-r${rep}" --golden "$GOLDEN" -- \
+    python3 "$ROOT/runner/track_b.py" \
+      --harness "$HARNESS" --model "$MODEL" --task "leb-${INSTANCE}" --rep "$rep" \
+      --leb-root "$LEB_ROOT" --leb-instance "$INSTANCE" \
+      --reps 1 --proxy-log "$PROXYLOG" --out "$OUT" || echo "  rep $rep: run.sh saiu != 0 (segue)"
+done
+
+# Verify do LEB no AMBIENTE COMPLETO (fora do env -i): o `docker compose` precisa
+# do HOME real (~/.docker/cli-plugins). Patcha verification+status no results.jsonl.
+echo "== verify do LEB (docker, ambiente completo, pós-run) =="
+python3 "$ROOT/runner/leb.py" patch-results --leb-root "$LEB_ROOT" --instance "$INSTANCE" --results "$OUT"
 
 echo "== resultados: $OUT =="
 python3 - "$OUT" <<'PY'
