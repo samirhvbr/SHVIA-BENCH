@@ -68,7 +68,10 @@ work/                    ephemeral per-task workspaces
 - [ ] **Live exit criterion** — planting a real MCP and running `claude` to prove
       A5, plus measuring `context_overhead_tokens` — needs the bench API key
       (`.secrets/anthropic`). This is the project's standing "smoke ao vivo" gate.
-- [ ] Track A / Track B runners (Phase 2/3)
+- [x] **Track A runner** (`track_a.py`) + `models.json` + `results.schema.json` —
+      streaming, cost recompute, N-reps + variance; validated offline (17/17). Real
+      campaign gated on the bench key.
+- [ ] Track B runner (Phase 3)
 
 ## Requirements
 

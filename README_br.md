@@ -68,7 +68,10 @@ work/                    workspaces efêmeros por tarefa
 - [ ] **Critério de saída ao vivo** — plantar um MCP real e rodar o `claude` pra
       provar o A5, e medir `context_overhead_tokens` — precisa da chave do bench
       (`.secrets/anthropic`). É o mesmo gate "smoke ao vivo" que persegue o projeto.
-- [ ] Runners da Trilha A / Trilha B (Fase 2/3)
+- [x] **Runner da Trilha A** (`track_a.py`) + `models.json` + `results.schema.json`
+      — streaming, custo recalculado, N-reps + variância; validado offline (17/17).
+      Campanha real gated na chave do bench.
+- [ ] Runner da Trilha B (Fase 3)
 
 ## Requisitos
 

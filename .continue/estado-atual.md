@@ -71,8 +71,30 @@ O mesmo "smoke ao vivo" que persegue o ecossistema. Precisa de `.secrets/anthrop
       comportamento real do `--strict-mcp-config`, schema do JSONL) — vira parte
       do "manter-verde" antes de codar a Trilha B.
 
-## Próximo — Fase 2 (Trilha A) e Fase 3 (Trilha B)
+## Fase 2 — Trilha A / modelo puro (19/07/2026, 0.2.0)
 
-`track_a.py` (modelo puro, streaming, custo recalculado) → `track_b.py` +
-`collect.py` (funde C1/C2/C3) + verificadores + tarefas-armadilha. Decisões de
-operador do §14 (modelos, Kilo, nível de esforço, juiz, publicação) travam aqui.
+- **`results.schema.json`** (§10.4) — schema de uma linha de resultado: tempo, os
+  3 TPS, custo recalculado, esforço/raciocínio; regra `metric=null nunca 0`
+  (§10.3); grupos agents/tools/autonomy = null na Trilha A.
+- **`config/models.json`** — catálogo Anthropic (Opus 4.8 / Sonnet 5 / Haiku 4.5 /
+  Fable 5) com pricing correto + entrada `M-dummy` p/ offline. Roster real = §14 Q1.
+- **`runner/track_a.py`** (§5.3) — cliente streaming stdlib: uma requisição, sem
+  ferramentas; mede TTFT/e2e, parseia `usage`/`stop_reason`, recalcula custo, roda
+  N repetições e agrega (mediana + dispersão).
+- **Correção da spec (via skill claude-api):** modelos Anthropic 4.6+ **rejeitam
+  `temperature`/`top_p`/`top_k` e `budget_tokens` com 400**. A §5.2 ("congelar
+  temperature=0/top_p=1") **não se aplica** a eles — o knob congelado é
+  `output_config.effort` (+ thinking). O `track_a` **nunca** envia sampling param.
+- ✅ **`tests/test_track_a_offline.py`** — 17/17 contra o dummy: usage 123/7, custo
+  0.137 (123×1000 + 7×2000 /1e6), TTFT<e2e, 3 reps + variância (custo cv 0%).
+- **Gated na chave** (`.secrets/anthropic`): a campanha real (5 reps por par,
+  `cost_delta_pct<2%` — que compara custo do harness vs recalculado, uma métrica
+  de *Trilha B*; na Trilha A o custo recalculado é o próprio instrumento).
+
+## Próximo — Fase 3 (Trilha B)
+
+`track_b.py` (invoca o harness — `claude -p` — no workspace efêmero, até concluir)
++ `collect.py` (funde C1 result / C2 transcript JSONL / C3 proxy) + verificadores
++ tarefas-armadilha de ambiguidade. **Antes**, validar o surface do Claude Code
+2.1.207 (o item pendente acima). Decisões de operador do §14 (modelos, Kilo, nível
+de esforço, juiz, publicação) travam aqui.
