@@ -106,19 +106,26 @@ def parse_c2(path, kind="claude-code"):
     }
 
 
-def parse_c3(path):
-    """proxy.jsonl → TTFT real, usage bruto, provedor (verdade-base)."""
+def parse_c3(path, window=None):
+    """proxy.jsonl → TTFT real, usage bruto, provedor (verdade-base).
+    O proxy.jsonl acumula chamadas de VÁRIOS runs que compartilham o log → filtra
+    pelas do caso atual via janela de tempo (started_utc, finished_utc). Linhas
+    sem `sent_utc` (ex.: fixtures de teste) passam."""
     if not path or not os.path.exists(path):
         return None
     calls, ttfts, provider = [], [], None
     agg = {"input_tokens": 0, "output_tokens": 0,
            "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0}
     hosts_off = []
+    w0, w1 = (window or (None, None))
     for line in open(path, encoding="utf-8"):
         try:
             o = json.loads(line)
         except json.JSONDecodeError:
             continue
+        su = o.get("sent_utc")
+        if w0 is not None and su is not None and not (w0 - 1 <= su <= w1 + 1):
+            continue  # chamada de outro caso/run
         calls.append(o)
         if o.get("ttft_ms") is not None:
             ttfts.append(o["ttft_ms"])
@@ -143,7 +150,7 @@ def collect(harness_result, proxy_log, model_cfg, ids, verify):
     hr = harness_result
     c1 = parse_c1(hr.get("c1"))
     c2 = parse_c2(hr.get("transcript_path"), hr.get("transcript_kind", "claude-code"))
-    c3 = parse_c3(proxy_log)
+    c3 = parse_c3(proxy_log, (hr.get("started_utc"), hr.get("finished_utc")))
     price = model_cfg["price_per_mtok"]
 
     # verdade p/ tokens/custo: C3 se tiver, senão C1 (§10.1)

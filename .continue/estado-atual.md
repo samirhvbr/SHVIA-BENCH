@@ -161,6 +161,30 @@ Claude Code teve).
   Trilha A direta (vendor sem proxy = sem C3); Kilo `sampling_ok:false` (o id é
   Anthropic 4.6+).
 
+## Smoke ao vivo — Anthropic (19/07/2026, 0.5.1)
+
+Com a chave em `.secrets/anthropic`, rodei o pipeline INTEIRO ao vivo:
+- **Proxy → Anthropic** (TLS ok no python macOS): 200, C3 capturado (TTFT/usage/host).
+- **A5 ao vivo**: `leaked:false` — o MCP canário plantado NÃO vazou; o
+  `--strict-mcp-config` descarta de fato. **Isolamento real, não teatro.**
+- **Trilha A** (Haiku, noop, 2 reps, run.sh+proxy): 2/2, TTFT ~743ms (cv 3.18%),
+  US$0.000046/rep, `proxy_bypassed=false`, C3 capturou as 2 chamadas.
+- **Trilha B** (Haiku, noop, run.sh → `claude -p` real → proxy → fusão C1+C2+C3):
+  completou; C1 (turnos/duration/contextWindow/permission_denials), C3 (TTFT).
+  **Reconciliação de custo: `cost_delta 0.0%`** (harness == recalculado).
+
+**Dois bugs que só o smoke ao vivo pegaria** (log sintético de 1 chamada não pega):
+1. `collect.parse_c3` agregava o `proxy.jsonl` **inteiro** (todas as chamadas de
+   todos os runs no log) → `cost_delta 99.69%`. **Corrigido:** filtro por janela de
+   tempo (`started_utc..finished_utc`) do caso. Re-rodado ao vivo → `cost_delta 0.0%`.
+2. O proxy captura `usage:{}` na chamada do Claude Code (o parse SSE não pega o
+   usage do CC) → cost/tokens caem corretamente pro **C1** (contabilidade do
+   próprio harness). Follow-up: investigar o shape do SSE do CC.
+
+**Gotcha de integração:** o `run.sh` faz `cd` pro workspace efêmero → o comando do
+`--` precisa de **caminho absoluto** pro `track_a/b.py`, e o dir do `claude`/`node`
+no `BENCH_EXTRA_PATH` (senão o harness não é achado no PATH sanitizado).
+
 ## Próximo — Fase 4 / campanha real
 
 Rodar de verdade (precisa de `.secrets/<vendor>`): fechar A5 ao vivo + A14
