@@ -1,0 +1,9 @@
+{
+  "includeCoAuthoredBy": false,
+  "cleanupPeriodDays": 3650,
+  "permissions": {
+    "defaultMode": "default",
+    "allow": [],
+    "deny": []
+  }
+}

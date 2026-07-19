@@ -1,0 +1,11 @@
+{
+  "id": "T-000",
+  "title": "noop — mede o overhead fixo de contexto do harness",
+  "tracks": ["A", "B"],
+  "provenance": "derived",
+  "scores": false,
+  "purpose": "Prompt trivial ('responda OK') rodado no mesmo harness com a mesma config. O tamanho do prompt da PRIMEIRA chamada, capturado no proxy (§4.4), é o custo fixo do harness — system prompt + definições de ferramentas + arquivos de contexto. Vira context_overhead_tokens (§10.6, métrica A14).",
+  "max_tokens": 16,
+  "timeout_s": 120,
+  "note": "Não pontua. Existe só para medir overhead. Comparar context_overhead_tokens entre harnesses é uma das comparações mais úteis da campanha (§10.6)."
+}

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "shvia-bench-canary": {
+      "command": "python3",
+      "args": ["config/canary_mcp_server.py"]
+    }
+  }
+}

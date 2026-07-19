@@ -1,0 +1,9 @@
+Read
+Write
+Edit
+Bash
+mcp__shvia-bench-canary__shvia_bench_canary
+Glob
+Grep
+WebFetch
+TodoWrite

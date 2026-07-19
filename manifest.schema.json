@@ -1,0 +1,90 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/samirhvbr/SHVIA-BENCH/manifest.schema.json",
+  "title": "SHVIA-BENCH run manifest",
+  "description": "Gerado ANTES da primeira chamada (spec §8.1). Se audit_passed=false, o runner aborta — auditoria é bloqueante.",
+  "type": "object",
+  "required": ["run_id", "created_utc", "operator", "suite_version",
+               "tracks", "models", "effort", "repetitions", "order_seed",
+               "isolation", "audit_passed"],
+  "additionalProperties": true,
+  "properties": {
+    "run_id": {"type": "string"},
+    "created_utc": {"type": "string", "format": "date-time"},
+    "operator": {"type": "string"},
+    "suite_version": {"type": "string", "description": "ex.: tasks@v0.3.1"},
+    "suite_sha256": {"type": "string"},
+    "git_commit": {"type": "string"},
+    "tracks": {"type": "array", "items": {"enum": ["A", "B"]}, "minItems": 1},
+    "models": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["alias", "id", "endpoint", "params"],
+        "properties": {
+          "alias": {"type": "string"},
+          "id": {"type": "string", "description": "identificador DATADO; 'latest' é proibido (§8.2)"},
+          "endpoint": {"type": "string", "format": "uri"},
+          "provider_pin": {"type": ["array", "null"], "items": {"type": "string"}},
+          "context_window_declared": {"type": ["integer", "null"]},
+          "price_per_mtok": {
+            "type": "object",
+            "properties": {
+              "input": {"type": "number"}, "output": {"type": "number"},
+              "cache_write": {"type": "number"}, "cache_read": {"type": "number"}
+            }
+          },
+          "params": {
+            "type": "object",
+            "required": ["temperature", "top_p", "max_tokens"],
+            "properties": {
+              "temperature": {"type": "number"},
+              "top_p": {"type": "number"},
+              "max_tokens": {"type": "integer"},
+              "thinking_budget": {"type": ["integer", "null"]}
+            }
+          }
+        }
+      }
+    },
+    "harnesses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "version"],
+        "properties": {
+          "name": {"type": "string"},
+          "version": {"type": "string"},
+          "config_sha256": {"type": "string"}
+        }
+      }
+    },
+    "effort": {
+      "type": "object",
+      "required": ["level"],
+      "description": "Fixo e idêntico por campanha (V17). Comparar níveis diferentes exige campanhas separadas.",
+      "properties": {
+        "level": {"enum": ["low", "medium", "high", "xhigh", "max", "auto"]},
+        "max_thinking_tokens": {"type": ["integer", "null"]}
+      }
+    },
+    "repetitions": {"type": "integer", "minimum": 1,
+                    "description": "N ≥ 5 recomendado (§8.2); reporte mediana e dispersão"},
+    "order_seed": {"type": "integer"},
+    "budget_per_case_usd": {"type": "number"},
+    "isolation": {
+      "type": "object",
+      "required": ["profile", "env_sanitized", "telemetry_disabled", "proxy_enabled"],
+      "properties": {
+        "profile": {"type": "string"},
+        "env_sanitized": {"type": "boolean"},
+        "mcp_servers": {"type": "array"},
+        "memory_backends": {"type": "array"},
+        "telemetry_disabled": {"type": "boolean"},
+        "proxy_enabled": {"type": "boolean"}
+      }
+    },
+    "audit_passed": {"type": "boolean",
+                     "description": "false ⇒ o runner ABORTA (§8.1)"}
+  }
+}

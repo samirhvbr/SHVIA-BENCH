@@ -1,0 +1,8 @@
+Read
+Write
+Edit
+Bash
+Glob
+Grep
+WebFetch
+TodoWrite

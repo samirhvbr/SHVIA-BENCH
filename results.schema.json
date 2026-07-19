@@ -1,0 +1,121 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/samirhvbr/SHVIA-BENCH/results.schema.json",
+  "title": "SHVIA-BENCH results.jsonl record",
+  "description": "Uma linha por execução (§10.4). REGRA: métrica ausente é null, NUNCA 0 (§10.3) — um harness sem contagem de subagente não tem '0 subagentes'. Na Trilha A, os grupos agents/tools/autonomy são null (não aplicável).",
+  "type": "object",
+  "required": ["run_id", "case_id", "task_id", "track", "status"],
+  "additionalProperties": true,
+  "properties": {
+    "run_id": {"type": "string"},
+    "case_id": {"type": "string", "description": "ex.: T-001/M1/B/rep3"},
+    "task_id": {"type": "string"},
+    "model_alias": {"type": "string"},
+    "model_id_resolved": {"type": ["string", "null"], "description": "ID efetivamente servido, não o solicitado"},
+    "track": {"enum": ["A", "B"]},
+    "repetition": {"type": ["integer", "null"]},
+    "session_id": {"type": ["string", "null"], "description": "Trilha B: chave da transcrição JSONL (C2)"},
+    "harness": {
+      "type": ["object", "null"],
+      "properties": {"name": {"type": "string"}, "version": {"type": "string"}}
+    },
+    "provider_effective": {"type": ["string", "null"], "description": "header do agregador (C3); prova que 2 runs do mesmo modelo não vieram de backends diferentes"},
+    "service_tier": {"type": ["string", "null"]},
+    "speed": {"type": ["string", "null"]},
+    "inference_geo": {"type": ["string", "null"]},
+    "started_utc": {"type": ["string", "null"]},
+    "finished_utc": {"type": ["string", "null"]},
+    "status": {"enum": ["completed", "failed_verification", "timeout", "max_turns", "budget_exceeded", "infra_error", "refused", "invalid_isolation"]},
+    "stop_reason": {"type": ["string", "null"]},
+    "terminal_reason": {"type": ["string", "null"]},
+    "subtype": {"type": ["string", "null"]},
+    "prompt_sha256": {"type": ["string", "null"], "description": "hashes diferentes entre modelos na mesma tarefa INVALIDAM o resultado (§8.2)"},
+
+    "time": {
+      "type": ["object", "null"],
+      "properties": {
+        "e2e_ms": {"type": ["number", "null"], "description": "disparo do processo → exit code; o que o usuário sente"},
+        "harness_duration_ms": {"type": ["number", "null"]},
+        "api_duration_ms": {"type": ["number", "null"], "description": "o que o modelo controla"},
+        "tool_time_ms": {"type": ["number", "null"]},
+        "startup_overhead_ms": {"type": ["number", "null"]},
+        "ttft_ms_first_call": {"type": ["number", "null"], "description": "do proxy C3"},
+        "ttft_ms_p50": {"type": ["number", "null"]},
+        "ttft_ms_p95": {"type": ["number", "null"]},
+        "generation_ms": {"type": ["number", "null"]},
+        "longest_tool_call_ms": {"type": ["number", "null"]}
+      }
+    },
+    "tokens": {
+      "type": ["object", "null"],
+      "properties": {
+        "input_tokens": {"type": ["integer", "null"]},
+        "output_tokens": {"type": ["integer", "null"]},
+        "cache_creation_input_tokens": {"type": ["integer", "null"]},
+        "cache_read_input_tokens": {"type": ["integer", "null"]},
+        "reasoning_tokens": {"type": ["integer", "null"]},
+        "total_tokens": {"type": ["integer", "null"]},
+        "cache_hit_ratio": {"type": ["number", "null"], "description": "cache_read/(input+cache_read+cache_creation) — não some cache_read com input sem qualificar"}
+      }
+    },
+    "throughput": {
+      "type": ["object", "null"],
+      "description": "Os TRÊS TPS, rotulados (§10.2). tps_session ≈ 5–20× menor que tps_generation em agentes — comparar um com o outro é o erro mais comum.",
+      "properties": {
+        "tps_generation": {"type": ["number", "null"], "description": "output / tempo_de_geração (exclui TTFT) — velocidade bruta"},
+        "tps_call": {"type": ["number", "null"], "description": "output / duração_total (inclui TTFT)"},
+        "tps_session": {"type": ["number", "null"], "description": "output_total / e2e (inclui tempo de ferramenta)"}
+      }
+    },
+    "cost": {
+      "type": ["object", "null"],
+      "description": "SEMPRE recalcule (§10.2). cost_per_task_passed é a métrica que mais reordena rankings.",
+      "properties": {
+        "cost_usd_harness": {"type": ["number", "null"]},
+        "cost_usd_computed": {"type": ["number", "null"], "description": "tokens (C3) × tabela de preços do manifesto"},
+        "cost_delta_pct": {"type": ["number", "null"]},
+        "budget_exceeded": {"type": ["boolean", "null"]},
+        "by_component": {
+          "type": ["object", "null"],
+          "properties": {
+            "input": {"type": ["number", "null"]}, "output": {"type": ["number", "null"]},
+            "cache_write": {"type": ["number", "null"]}, "cache_read": {"type": ["number", "null"]},
+            "reasoning": {"type": ["number", "null"]}
+          }
+        }
+      }
+    },
+    "agents": {"type": ["object", "null"], "description": "Trilha A: null (não aplicável). Trilha B: subagent_count, subagent_types[], subagent_link_confidence (exact|heuristic), etc."},
+    "context": {
+      "type": ["object", "null"],
+      "properties": {
+        "context_window": {"type": ["integer", "null"]},
+        "max_output_tokens": {"type": ["integer", "null"]},
+        "context_peak_tokens": {"type": ["integer", "null"]},
+        "context_utilization_pct": {"type": ["number", "null"]},
+        "context_overhead_tokens": {"type": ["integer", "null"], "description": "custo fixo do harness antes de ver a tarefa — medido pela T-000-noop (§10.6)"},
+        "compaction_events": {"type": ["integer", "null"], "description": ">0 com DISABLE_AUTOCOMPACT=1 ⇒ isolamento falhou; caso INVÁLIDO (V13)"}
+      }
+    },
+    "effort": {
+      "type": ["object", "null"],
+      "properties": {
+        "effort_level_requested": {"enum": ["low", "medium", "high", "xhigh", "max", "auto", null]},
+        "effort_source": {"enum": ["flag", "env", "setting", "default", null], "description": "'default' ⇒ esforço não controlado, execução NÃO comparável"},
+        "max_thinking_tokens_requested": {"type": ["integer", "null"]},
+        "reasoning_tokens_actual": {"type": ["integer", "null"], "description": "obrigatório no relatório — é ele, não o rótulo do nível, que torna a comparação interpretável (§12)"},
+        "thinking_share": {"type": ["number", "null"]},
+        "thinking_visibility": {"enum": ["raw", "summary", "count_only", "none", null]}
+      }
+    },
+    "autonomy": {"type": ["object", "null"], "description": "Trilha A: null. Trilha B: completed_without_asking, tool_error_count, self_recovered_count, recovery_rate, hit_max_turns (§10.5)"},
+    "tools": {"type": ["object", "null"], "description": "Trilha A: null. Trilha B: tool_calls_total, by_name{}, files_read/written, lines_changed, redundant_reads"},
+    "verification": {
+      "type": ["object", "null"],
+      "properties": {"passed": {"type": ["boolean", "null"]}, "exit_code": {"type": ["integer", "null"]}}
+    },
+    "rubric": {"type": ["object", "null"], "description": "níveis ancorados 0/1/2 por critério (§9.3)"},
+    "score": {"type": ["number", "null"]},
+    "artifacts_path": {"type": ["string", "null"]}
+  }
+}

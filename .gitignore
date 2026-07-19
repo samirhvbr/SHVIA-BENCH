@@ -1,0 +1,31 @@
+# Segredos REAIS — NUNCA versionar. A chave do bench mora aqui, injetada
+# individualmente pelo run.sh (nunca `source .env`, nunca em argumento de CLI).
+.secrets/*
+!.secrets/.gitkeep
+
+# Sandbox HOME VIVO — recriado do template a cada run (§4.2). Só o TEMPLATE
+# (config/profile.template/) é versionado; a instância viva não.
+/profile/
+
+# Workspaces efêmeros por tarefa (§4.3)
+/work/*
+!/work/.gitkeep
+
+# Runs: WRITE-ONLY e grandes. Scorecards oficiais arquivados/publicados à parte
+# (mesma regra do LEB para instances/*/runs/).
+/runs/*
+!/runs/README.md
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Bundles/exports de trabalho
+*.zip
+
+# macOS
+.DS_Store
+
+# scratch/erro solto
+err.txt
