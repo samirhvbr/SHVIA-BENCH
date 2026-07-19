@@ -185,6 +185,31 @@ Com a chave em `.secrets/anthropic`, rodei o pipeline INTEIRO ao vivo:
 `--` precisa de **caminho absoluto** pro `track_a/b.py`, e o dir do `claude`/`node`
 no `BENCH_EXTRA_PATH` (senão o harness não é achado no PATH sanitizado).
 
+## LEB wirado como fonte de tarefas da Trilha B (19/07/2026, 0.6.0)
+
+O LEB (`~/x/AI-BENCHMARK`, benchmark de evolução de legado) vira fonte de tarefas
+reais da Trilha B — lido do repo, **nunca duplicado** aqui.
+
+- **`runner/leb.py`** — adapter: `prepare(leb_root, instance)` monta o prompt
+  (**enunciado canônico §2**, lido do PROTOCOL.md pra não parafrasear + o
+  `manifest.md`) e aponta o golden pro `code/`; **guard anti-contaminação** recusa
+  se o golden tiver qualquer coisa de `private/`/matriz/probe. `verify(...)` roda o
+  `harness/leb_harness.py` do LEB (docker mysql8+php8.4) contra a entrega → exit 0
+  = sem regressão; parseia probes corrigidas + dificuldade.
+- **`track_b` com `--leb-root/--leb-instance`**: prompt e verify vêm do LEB (o
+  golden é montado pelo `run.sh --golden`); o status vira `failed_verification` se
+  o LEB acusar regressão.
+- **`runner/campaign_leb.sh`** — driver de 1 caso (PROTOCOL §4: 3 reps, mediana):
+  proxy + `run.sh --golden code/` + `track_b --leb-instance` + verify LEB.
+  Encapsula os gotchas do smoke (caminho absoluto, `BENCH_EXTRA_PATH` com
+  claude/node/docker).
+- ✅ **`tests/test_leb_offline.py` (7/7)** — prova a preparação (enunciado+manifesto,
+  golden=code/, matriz NÃO vaza) e o comando de verify, sem docker/chave.
+
+**Falta pra rodar um caso LEB de VERDADE:** é um passo AO VIVO (como o smoke) —
+precisa das imagens docker (mysql8+php8.4) + um run real do modelo. O plumbing está
+provado offline; `runner/campaign_leb.sh M-opus48 LEB-100-A` roda quando quiser.
+
 ## Próximo — Fase 4 / campanha real
 
 Rodar de verdade (precisa de `.secrets/<vendor>`): fechar A5 ao vivo + A14

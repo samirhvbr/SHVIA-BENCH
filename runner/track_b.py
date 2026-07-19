@@ -141,6 +141,10 @@ def main():
     ap.add_argument("--max-turns", type=int, default=int(os.environ.get("MAX_TURNS", "30")))
     ap.add_argument("--effort", default=os.environ.get("CLAUDE_CODE_EFFORT_LEVEL", "high"))
     ap.add_argument("--permission-mode", default="acceptEdits")
+    ap.add_argument("--leb-root", default=os.path.expanduser("~/x/AI-BENCHMARK"),
+                    help="raiz do LEB/AI-BENCHMARK (fonte de tarefas)")
+    ap.add_argument("--leb-instance", default=None,
+                    help="id da instância LEB (ex.: LEB-100-A). Se setado, prompt e verify vêm do LEB.")
     args = ap.parse_args()
 
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -159,11 +163,16 @@ def main():
         sys.exit(f"track_b: harness '{args.harness}' sem adapter implementado — valide o "
                  f"surface (config/harness-matrix.md) e implemente o adapter antes de rodar.")
 
-    task_dir = os.path.join(root, "tasks", args.task)
-    prompt_path = os.path.join(task_dir, "prompt.md")
-    if not os.path.exists(prompt_path):
-        sys.exit(f"track_b: prompt ausente: {prompt_path}")
-    prompt = open(prompt_path, encoding="utf-8").read()
+    if args.leb_instance:
+        import leb  # fonte de tarefas = LEB (o golden já foi montado pelo run.sh --golden)
+        prompt = leb.prepare(args.leb_root, args.leb_instance)["prompt"]
+        task_dir = None
+    else:
+        task_dir = os.path.join(root, "tasks", args.task)
+        prompt_path = os.path.join(task_dir, "prompt.md")
+        if not os.path.exists(prompt_path):
+            sys.exit(f"track_b: prompt ausente: {prompt_path}")
+        prompt = open(prompt_path, encoding="utf-8").read()
 
     workspace = os.getcwd()  # o run.sh já fez cd pro WORK efêmero
     config_dir = os.environ.get("CLAUDE_CONFIG_DIR", os.path.expanduser("~/.claude"))
@@ -176,8 +185,16 @@ def main():
     completed = 0
     for rep in range(1, args.reps + 1):
         hr = run_harness(harness, model_cfg, prompt, workspace, config_dir, opts)
-        verify = run_verify(task_dir, workspace) if hr["status"] in ("completed", "failed_verification") else \
-            {"passed": None, "exit_code": None}
+        if hr["status"] not in ("completed", "failed_verification"):
+            verify = {"passed": None, "exit_code": None}
+        elif args.leb_instance:
+            import leb
+            verify = leb.verify(args.leb_root, args.leb_instance, workspace)
+            # o LEB decide o status: exit 0 = sem regressão; regressão = falha
+            if verify.get("passed") is False:
+                hr["status"] = "failed_verification"
+        else:
+            verify = run_verify(task_dir, workspace)
         ids = {"run_id": run_id, "task_id": args.task, "model_alias": args.model,
                "repetition": rep, "case_id": f"{args.task}/{args.model}/B/rep{rep}"}
         rec = collect_mod.collect(hr, args.proxy_log, model_cfg, ids, verify)
