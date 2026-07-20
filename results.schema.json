@@ -25,10 +25,34 @@
     "inference_geo": {"type": ["string", "null"]},
     "started_utc": {"type": ["string", "null"]},
     "finished_utc": {"type": ["string", "null"]},
-    "status": {"enum": ["completed", "failed_verification", "timeout", "max_turns", "budget_exceeded", "infra_error", "refused", "invalid_isolation"]},
+    "status": {
+      "enum": ["completed", "failed_verification", "pending_verification", "timeout", "max_turns", "budget_exceeded", "infra_error", "refused", "invalid_isolation"],
+      "description": "Arbitragem ÚNICA de (harness_outcome, verification), em runner/status.py. `failed_verification` é JUÍZO SOBRE A ENTREGA e só o verificador pode emiti-lo — nunca colapse `infra_error` nele (§10.4). `pending_verification` = harness ok mas o veredito ainda não foi medido (não medido ≠ aprovado)."
+    },
+    "harness_outcome": {
+      "enum": ["ok", "timeout", "infra_error", "budget_exceeded", "max_turns", null],
+      "description": "O que aconteceu com a EXECUÇÃO, independente do veredito. Eixo separado de `verification` — é o que impede erro de infra de virar nota do modelo. Ausente em registros < 0.7.0."
+    },
+    "harness_anomaly": {
+      "type": ["object", "null"],
+      "description": "Sinais crus do C1 quando o desfecho não foi classificável (is_error/subtype/terminal_reason/stop_reason/api_error_status). Existe para que subtype desconhecido caia em `infra_error` COM evidência, em vez de num fallback silencioso."
+    },
     "stop_reason": {"type": ["string", "null"]},
     "terminal_reason": {"type": ["string", "null"]},
     "subtype": {"type": ["string", "null"]},
+    "is_error": {"type": ["boolean", "null"], "description": "C1 nativo. Eixo INDEPENDENTE de `subtype` no Claude Code 2.1.207 (observado: is_error=true com subtype=success). Persistido desde 0.7.0 — sem ele o registro não é diagnosticável a partir de si mesmo."},
+    "api_error_status": {"type": ["integer", "null"], "description": "C1 nativo: HTTP do erro de API, quando houve"},
+    "instrumentation": {
+      "type": ["object", "null"],
+      "description": "Quais camadas foram capturadas. Distingue 'métrica ausente' de 'transcript não encontrado' — sem isto, o C2 perdido em 100% dos runs até 0.6.1 ficou invisível.",
+      "properties": {
+        "c1_found": {"type": ["boolean", "null"]},
+        "c2_found": {"type": ["boolean", "null"]},
+        "c3_found": {"type": ["boolean", "null"]},
+        "transcript_discovery": {"enum": ["slug", "glob", "glob_ambiguous", "none", null], "description": "COMO o C2 foi achado. 'glob' ⇒ a regra de slug do harness mudou (§6.2) — o campo é a validação contínua dessa hipótese."},
+        "transcript_path": {"type": ["string", "null"]}
+      }
+    },
     "prompt_sha256": {"type": ["string", "null"], "description": "hashes diferentes entre modelos na mesma tarefa INVALIDAM o resultado (§8.2)"},
 
     "time": {
@@ -112,7 +136,16 @@
     "tools": {"type": ["object", "null"], "description": "Trilha A: null. Trilha B: tool_calls_total, by_name{}, files_read/written, lines_changed, redundant_reads"},
     "verification": {
       "type": ["object", "null"],
-      "properties": {"passed": {"type": ["boolean", "null"]}, "exit_code": {"type": ["integer", "null"]}}
+      "description": "Veredito do verificador da tarefa — evidência anexa a QUALQUER desfecho de harness (um run que morreu de erro de API pode ter entregue trabalho correto, e foi pago). Só este grupo autoriza `status:failed_verification`.",
+      "properties": {
+        "passed": {"type": ["boolean", "null"], "description": "null = não medido (§10.3), nunca 'reprovado'"},
+        "exit_code": {"type": ["integer", "null"]},
+        "applicable": {"type": ["boolean", "null"], "description": "false = a tarefa NÃO TEM verificador (nada a medir). Distinto de 'ainda não rodou', que é `pending`."},
+        "pending": {"type": ["string", "null"], "description": "verificador diferido p/ o pós-run (ex.: 'leb' — docker precisa do HOME real, fora do env -i)"},
+        "regression": {"type": ["boolean", "null"]},
+        "probes_total": {"type": ["integer", "null"]},
+        "probes_corrigidas": {"type": ["integer", "null"]}
+      }
     },
     "rubric": {"type": ["object", "null"], "description": "níveis ancorados 0/1/2 por critério (§9.3)"},
     "score": {"type": ["number", "null"]},

@@ -50,14 +50,29 @@ real Claude Code install. (See spec §4.0.)
 runner/run.sh        env -i + sandbox HOME + CLAUDE_CONFIG_DIR — sanitized entrypoint (§4.2)
 runner/audit.sh      blocking pre-run audit, block A (A1–A14) → audit.json (§11)
 runner/canary.sh     A5 tool canary: proves a planted MCP does NOT leak in (live + --selftest)
+runner/status.py     SINGLE arbiter of `status` — two orthogonal axes (§10.4)
+runner/campaign_leb.sh   one LEB case end-to-end; never overwrites paid results
 proxy/logging_proxy.py   passive logging proxy → proxy.jsonl: TTFT, usage, dest allowlist (§4.4)
 config/profile.template/ versioned sandbox HOME (minimal, explicit settings)
 config/mcp.empty.json    {"mcpServers": {}}
 tasks/T-000-noop/        trivial task — measures the harness's fixed context overhead (§10.6)
 manifest.schema.json     run manifest (§8.1); a run aborts if audit_passed is false
-runs/                    WRITE-ONLY. No execution process reads from here.
+docs/rodar.md            operator runbook (how to actually run a campaign)
+tests/run_all.sh         the whole offline suite in one command
+runs/                    WRITE-ONLY for execution. No process that runs a model reads
+                         from here — that is what keeps a previous result from feeding
+                         a future run (§4.1). Post-run steps (verify patching,
+                         reclassify, summaries) do read it: they run after the fact
+                         and feed no model.
 work/                    ephemeral per-task workspaces
 ```
+
+**`status` is not a single axis.** `harness_outcome` (did the execution yield a
+valid measurement?) and `verification` (did the delivery pass the task's verifier?)
+are separate. Only the verifier may emit `failed_verification` — an API/infra error
+is `infra_error` and never becomes the model's score. This is enforced structurally
+in `runner/status.py`, after a transient API error was once recorded as a benchmark
+failure on a paid run that had actually passed.
 
 ## Status — Phase 1 (foundation)
 
@@ -76,7 +91,13 @@ work/                    ephemeral per-task workspaces
 - [x] **Track B runner** (`track_b.py` + `collect.py`) — drives isolated
       `claude -p`, fuses C1 (result) + C2 (transcript) + C3 (proxy); Claude Code
       2.1.207 surface validated empirically (`config/harness-matrix.md`); offline
-      test 25/25. Real campaign gated on the bench key.
+      test 30/30. Real campaign gated on the bench key.
+- [x] **LEB wired as Track B task source** (`leb.py`, `campaign_leb.sh`) — real
+      legacy-evolution cases, verified by the LEB's own docker harness post-run.
+- [x] **Measurement integrity (0.7.0)** — two-axis `status` (`runner/status.py`),
+      transcript found by session id, paid results never overwritten, campaign
+      resumable via `--from-rep`. Offline suite: `bash tests/run_all.sh`
+      (67 checks in the taxonomy suite alone).
 - [ ] Phase 4 — real campaign (live A5/A14, LEB instances, §14 operator decisions)
 
 ## Requirements

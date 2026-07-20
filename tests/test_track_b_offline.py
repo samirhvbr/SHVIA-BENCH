@@ -36,7 +36,8 @@ def main():
     hr = track_b.run_harness(harness, model_cfg, "corrija o bug",
                              workspace, config_dir, opts)
     print("harness:", json.dumps({k: hr.get(k) for k in
-          ("status", "session_id", "e2e_ms", "transcript_path")}, ensure_ascii=False))
+          ("harness_outcome", "session_id", "e2e_ms", "transcript_path",
+           "transcript_discovery")}, ensure_ascii=False))
 
     # C3 sintético: 2 chamadas; usage soma = input100/out200/cc5000/cr10000
     proxy_log = os.path.join(tmp, "proxy.jsonl")
@@ -57,8 +58,15 @@ def main():
     t = rec.get("time", {}); tok = rec.get("tokens", {}); cost = rec.get("cost", {})
     ag = rec.get("agents", {}); ctx = rec.get("context", {}); tl = rec.get("tools", {})
     ef = rec.get("effort", {})
+    inst = rec.get("instrumentation", {})
     checks = {
-        "status==completed": hr["status"] == "completed" and rec["status"] == "completed",
+        # O harness reporta DESFECHO; quem arbitra o `status` é o resolve_status,
+        # já com o veredito em mãos. A ausência da chave `status` no envelope do
+        # harness é a garantia ESTRUTURAL de que o bug de 19/07/2026 (erro de API
+        # virando `failed_verification`) não volta por outro caminho.
+        "run_harness NÃO emite status (só desfecho)": "status" not in hr,
+        "harness_outcome==ok": hr["harness_outcome"] == "ok",
+        "status==completed (ok + verify passou)": rec["status"] == "completed",
         "track==B": rec["track"] == "B",
         "model_id_resolved==dummy-model-1[1m]": rec["model_id_resolved"] == "dummy-model-1[1m]",
         # C1
@@ -83,6 +91,12 @@ def main():
         "tool_calls_total==3": tl.get("tool_calls_total") == 3,
         "by_name Task/Read/Edit": tl.get("by_name") == {"Task": 1, "Read": 1, "Edit": 1},
         "context_peak==15100 (input+cache do turno)": ctx.get("context_peak_tokens") == 15100,
+        # O C2 tem de ser achado mesmo quando a regra de slug do harness não bate
+        # (o TMPDIR do macOS tem '_', que o Claude Code também converte — foi o que
+        # fez o C2 sumir em 100% dos runs pagos até a 0.6.1, silenciosamente).
+        "C2 encontrado": inst.get("c2_found") is True,
+        "discovery registrado (slug|glob)": inst.get("transcript_discovery") in ("slug", "glob"),
+        "c1/c3 registrados como capturados": inst.get("c1_found") is True and inst.get("c3_found") is True,
         # autonomia + verificação
         "permission_blocked_count==0": (rec.get("autonomy") or {}).get("permission_blocked_count") == 0,
         "verification.passed==True": (rec.get("verification") or {}).get("passed") is True,

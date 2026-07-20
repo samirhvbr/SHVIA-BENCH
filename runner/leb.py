@@ -14,6 +14,9 @@ import os
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import status as status_mod  # noqa: E402
+
 
 def canonical_statement(leb_root):
     """Extrai o blockquote do §2 (enunciado canônico) do protocol/PROTOCOL.md."""
@@ -120,7 +123,7 @@ def verify(leb_root, instance, submission_dir, out_json=None, dry_run=False, tim
 def patch_results(leb_root, results_path):
     """Pós-run, no AMBIENTE COMPLETO (fora do env -i): para cada linha com
     verify.pending=='leb', roda o verify do LEB (docker) contra o workspace e
-    patcha `verification` + `status`. Reescreve o results.jsonl."""
+    patcha `verification` + `status`. Reescreve o results.jsonl ATOMICAMENTE."""
     recs = [json.loads(l) for l in open(results_path, encoding="utf-8") if l.strip()]
     done = 0
     for rec in recs:
@@ -128,24 +131,106 @@ def patch_results(leb_root, results_path):
         if v.get("pending") != "leb":
             continue
         ws, inst = v.get("workspace"), v.get("leb_instance")
+        if not inst:
+            # guard simétrico ao do workspace: sem instância, o verify nem monta o
+            # caminho (`os.path.join(..., None)` → TypeError abortaria o patch das
+            # DEMAIS reps pendentes, e o campaign morreria em `set -e`).
+            rec["verification"] = {**v, "note": "registro sem leb_instance — verify não roda"}
+            continue
         if not ws or not os.path.isdir(ws):
-            rec["verification"] = {"passed": None, "note": f"workspace sumiu: {ws}"}
+            # o verify NÃO rodou ⇒ continua PENDENTE. Perder o workspace não é um
+            # veredito sobre a entrega, e não pode virar um.
+            rec["verification"] = {**v, "note": f"workspace sumiu: {ws}"}
             continue
         res = verify(leb_root, inst, ws)
-        rec["verification"] = res
-        if res.get("passed") is False:
-            rec["status"] = "failed_verification"
-        done += 1
-    with open(results_path, "w", encoding="utf-8") as f:
+        # FUNDE, não substitui. Os retornos SOFT do `verify` (leb_harness ausente,
+        # docker fora do PATH, timeout) não trazem `pending`/`workspace`/`leb_instance`;
+        # substituir o dict apagaria o ponteiro do workspace PAGO e o registro nunca
+        # mais poderia ser reverificado — uma falha transitória (Docker Desktop
+        # parado no pós-run) viraria perda PERMANENTE do veredito de reps pagas.
+        merged = {**v, **res}
+        if res.get("passed") is None:
+            merged["pending"] = "leb"    # nada foi medido ⇒ segue pendente, reverificável
+        else:
+            merged.pop("pending", None)  # veredito obtido
+            done += 1                    # só conta o que FOI de fato verificado
+        rec["verification"] = res = merged
+        # Mesma combinadora do track_b ⇒ PROMOVE e REBAIXA pelo mesmo mecanismo.
+        # Antes da 0.7.0 este ponto só sabia rebaixar (`passed is False` →
+        # failed_verification) e nunca restaurava: por isso a rep1 do Opus seguiu
+        # `failed_verification` mesmo com `passed:true`.
+        # E o desfecho do harness continua mandando: uma rep que morreu de erro de
+        # API mas passou o verify NÃO vira `completed` limpo — o trabalho pode
+        # estar certo, mas a MEDIÇÃO (tempo/custo/turnos) está truncada, e é a
+        # medição que o benchmark publica. O veredito fica anexo em `verification`.
+        rec["status"] = status_mod.resolve_status(
+            status_mod.harness_outcome_of_record(rec), res)
+    # Escrita ATÔMICA: o results.jsonl é evidência PAGA. Uma exceção no meio do
+    # laço de escrita truncava o arquivo in-place e destruía reps já pagas.
+    tmp = results_path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
         for rec in recs:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    os.replace(tmp, results_path)
     return done
+
+
+def reclassify_results(results_path, dry_run=False):
+    """Reaplica a ARBITRAGEM sobre registros JÁ gravados, sem rodar verify de novo.
+
+    Existe para reparar registros anteriores à 0.7.0, em que o HARNESS emitia o
+    `status` e um erro de API podia ter virado `failed_verification` (incidente de
+    19/07/2026). Sem isto, o `patch-results` não alcança esses registros — o filtro
+    de entrada dele é `verification.pending == "leb"`, e um registro já patchado
+    não tem mais `pending`; a reclassificação ficaria como código inalcançável.
+
+    Não inventa dado: só recombina o que já está no próprio registro. Devolve a
+    lista de mudanças (para o operador conferir ANTES de gravar, com --dry-run).
+    """
+    recs = [json.loads(l) for l in open(results_path, encoding="utf-8") if l.strip()]
+    changes = []
+    for rec in recs:
+        # Só Trilha B. Um registro da Trilha A não tem os dois eixos (nem `subtype`,
+        # nem `verification`): passá-lo pela combinadora reescreveria `completed`
+        # como `infra_error`, inventando uma falha que nunca houve. A ferramenta de
+        # reparo não pode ser ela própria uma fonte de dano.
+        if rec.get("track") != "B":
+            continue
+        # `refused` / `invalid_isolation` são terminais e não deriváveis do C1 —
+        # a combinadora não sabe produzi-los e os apagaria.
+        if rec.get("status") in ("refused", "invalid_isolation"):
+            continue
+        old_status = rec.get("status")
+        old_outcome = rec.get("harness_outcome")
+        outcome = status_mod.harness_outcome_of_record(rec)
+        new_status = status_mod.resolve_status(outcome, rec.get("verification") or {})
+        if old_status == new_status and old_outcome == outcome:
+            continue
+        changes.append({"case_id": rec.get("case_id"),
+                        "status": [old_status, new_status],
+                        "harness_outcome": [old_outcome, outcome]})
+        if not dry_run:
+            rec["status"] = new_status
+            rec["harness_outcome"] = outcome
+            # Proveniência: um registro pago reescrito pós-hoc precisa dizer que
+            # foi reescrito, e a partir de quê. Auditabilidade vale para nós também.
+            rec.setdefault("_repairs", []).append(
+                {"by": "leb.py reclassify", "status": [old_status, new_status]})
+    if changes and not dry_run:
+        tmp = results_path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            for rec in recs:
+                f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        os.replace(tmp, results_path)
+    return changes
 
 
 if __name__ == "__main__":
     import argparse
-    ap = argparse.ArgumentParser(description="adapter LEB (prepare/verify/patch-results)")
-    ap.add_argument("cmd", choices=["prepare", "verify", "patch-results"])
+    ap = argparse.ArgumentParser(
+        description="adapter LEB (prepare/verify/patch-results/reclassify). "
+                    "`reclassify` só toca registros da Trilha B; use --dry-run antes.")
+    ap.add_argument("cmd", choices=["prepare", "verify", "patch-results", "reclassify"])
     ap.add_argument("--leb-root", default=os.path.expanduser("~/x/AI-BENCHMARK"))
     ap.add_argument("--instance")
     ap.add_argument("--submission")
@@ -158,6 +243,13 @@ if __name__ == "__main__":
     elif a.cmd == "verify":
         print(json.dumps(verify(a.leb_root, a.instance, a.submission or ".",
                                  dry_run=a.dry_run), ensure_ascii=False, indent=2))
-    else:  # patch-results
+    elif a.cmd == "patch-results":
         n = patch_results(a.leb_root, a.results)
         print(f"leb: {n} caso(s) verificado(s) → {a.results}")
+    else:  # reclassify
+        chs = reclassify_results(a.results, dry_run=a.dry_run)
+        modo = "(dry-run, nada gravado)" if a.dry_run else "→ gravado"
+        print(f"leb: {len(chs)} registro(s) reclassificado(s) {modo}")
+        for c in chs:
+            print(f"  {c['case_id']}: status {c['status'][0]} → {c['status'][1]}"
+                  f" · harness_outcome {c['harness_outcome'][0]} → {c['harness_outcome'][1]}")

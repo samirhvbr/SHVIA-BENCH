@@ -42,7 +42,23 @@ estável/campanha publicada. Proibido `feat:`/`fix:`/`chore:` e mensagens vagas.
   trabalho (§4.0). Todo run passa por `env -i` + HOME sandbox recriado do
   template + `CLAUDE_CONFIG_DIR` isolado. **Nunca** tocar no `~/.claude` real.
 - **`runs/` é WRITE-ONLY.** Nenhum processo de execução lê de `runs/` — isso
-  impede resultado anterior realimentar execução futura (§4.1).
+  impede resultado anterior realimentar execução futura (§4.1). O que o invariante
+  protege é a **execução do modelo**: por isso a retomada de campanha é do
+  OPERADOR (`--from-rep N`), não do driver — derivar controle de fluxo do próprio
+  ledger seria exatamente a realimentação proibida. Passos de **pós-run**
+  (`patch-results`, `reclassify`, sumário) leem `runs/` legitimamente: rodam depois
+  da execução e não alimentam modelo nenhum.
+- **Dado pago não se destrói.** Cada linha de `results.jsonl` custou dinheiro real
+  (ordem de US$1/rep no Opus). Nada no repo pode truncar ou sobrescrever resultado
+  existente: o driver **recusa** e ensina a retomar; escrita de resultado é sempre
+  atômica (`os.replace`); falha transitória do verificador mantém a rep
+  **pendente e reverificável**, nunca a consome.
+- **`failed_verification` é do VERIFICADOR, nunca do harness** (§10.4). `status` é
+  função pura de dois eixos ortogonais — `harness_outcome` (a execução produziu
+  medição válida?) × `verification` (a entrega passou?) —, arbitrada num único
+  ponto (`runner/status.py`). Erro de API/infra é `infra_error`: nunca vira nota do
+  modelo. Desfecho desconhecido cai em `infra_error` **com a anomalia crua anexada**,
+  jamais num fallback silencioso.
 - **Segredos nunca versionados.** A chave vive em `.secrets/` (gitignored),
   injetada individualmente pelo `run.sh`. Nunca `source .env`, nunca em argv.
 - **Nada de interno da Blue3 aqui.** Sem o gateway interno, sem o CLI interno,
@@ -66,6 +82,9 @@ estável/campanha publicada. Proibido `feat:`/`fix:`/`chore:` e mensagens vagas.
 - `runner/run.sh <cmd...>` — roda `<cmd>` no ambiente sanitizado.
 - `runner/audit.sh` — bloco A mecânico (retorna ≠0 se algum check bloqueante falha).
 - `runner/canary.sh --selftest` — prova o detector A5 offline (fixtures).
+- `bash tests/run_all.sh` — **a suíte offline inteira** (sem rede/chave/docker).
+  Rode isto, não os arquivos soltos: foi assim que um teste ficou vermelho sem
+  ninguém notar.
 - `python3 proxy/logging_proxy.py` — sobe o proxy passivo.
 
 ---

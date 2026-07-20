@@ -50,14 +50,29 @@ sua instalação real do Claude Code**. (Spec §4.0.)
 runner/run.sh        env -i + HOME sandbox + CLAUDE_CONFIG_DIR — entrypoint sanitizado (§4.2)
 runner/audit.sh      auditoria pré-run bloqueante, bloco A (A1–A14) → audit.json (§11)
 runner/canary.sh     canário A5: prova que um MCP plantado NÃO vaza pra dentro (live + --selftest)
+runner/status.py     arbitragem ÚNICA do `status` — dois eixos ortogonais (§10.4)
+runner/campaign_leb.sh   um caso LEB ponta a ponta; nunca sobrescreve resultado pago
 proxy/logging_proxy.py   proxy passivo → proxy.jsonl: TTFT, usage, allowlist de destino (§4.4)
 config/profile.template/ HOME sandbox versionado (settings mínimo e explícito)
 config/mcp.empty.json    {"mcpServers": {}}
 tasks/T-000-noop/        tarefa trivial — mede o overhead fixo de contexto do harness (§10.6)
 manifest.schema.json     manifesto do run (§8.1); o run aborta se audit_passed for false
-runs/                    SOMENTE ESCRITA. Nenhum processo de execução lê daqui.
+docs/rodar.md            runbook do operador (como rodar uma campanha de verdade)
+tests/run_all.sh         a suíte offline inteira, num comando
+runs/                    SOMENTE ESCRITA para execução. Nenhum processo que roda um
+                         MODELO lê daqui — é isso que impede resultado anterior
+                         realimentar run futuro (§4.1). Passos de PÓS-RUN (patch do
+                         verify, reclassify, sumário) leem: rodam depois do fato e
+                         não alimentam modelo nenhum.
 work/                    workspaces efêmeros por tarefa
 ```
+
+**`status` não é um eixo só.** `harness_outcome` (a execução produziu medição
+válida?) e `verification` (a entrega passou no verificador?) são separados. Só o
+verificador emite `failed_verification` — erro de API/infra é `infra_error` e nunca
+vira nota do modelo. Isso é garantido por estrutura em `runner/status.py`, depois de
+um erro transitório de API ter sido registrado como falha de benchmark numa rep paga
+que na verdade havia passado.
 
 ## Status — Fase 1 (fundação)
 
@@ -76,7 +91,14 @@ work/                    workspaces efêmeros por tarefa
 - [x] **Runner da Trilha B** (`track_b.py` + `collect.py`) — dirige o `claude -p`
       isolado, funde C1 (result) + C2 (transcript) + C3 (proxy); surface do Claude
       Code 2.1.207 validado empiricamente (`config/harness-matrix.md`); teste
-      offline 25/25. Campanha real gated na chave.
+      offline 30/30. Campanha real gated na chave.
+- [x] **LEB wirado como fonte de tarefas da Trilha B** (`leb.py`, `campaign_leb.sh`)
+      — casos reais de evolução de legado, avaliados pelo harness docker do próprio
+      LEB no pós-run.
+- [x] **Integridade da medição (0.7.0)** — `status` de dois eixos
+      (`runner/status.py`), transcript achado por session id, resultado pago nunca
+      sobrescrito, campanha retomável com `--from-rep`. Suíte offline:
+      `bash tests/run_all.sh` (67 checks só na suíte de taxonomia).
 - [ ] Fase 4 — campanha real (A5/A14 ao vivo, instâncias LEB, decisões §14)
 
 ## Requisitos

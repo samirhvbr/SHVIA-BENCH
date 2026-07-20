@@ -716,7 +716,35 @@ Antes de comparar dois harnesses, preencha `config/harness-matrix.md` marcando c
 }
 ```
 
-`status` aceita: `completed`, `failed_verification`, `timeout`, `max_turns`, `budget_exceeded`, `infra_error`, `refused`, `invalid_isolation`. Nunca colapse `infra_error` em `failed_verification`.
+`status` aceita: `completed`, `failed_verification`, `pending_verification`, `timeout`, `max_turns`, `budget_exceeded`, `infra_error`, `refused`, `invalid_isolation`. Nunca colapse `infra_error` em `failed_verification`.
+
+**Dois eixos, não um (0.7.0).** Esta regra em prosa foi violada na prática — em
+19/07/2026 um erro transitório de API virou `failed_verification` numa rep paga
+que havia PASSADO no verify do LEB. A causa: `status` era emitido pelo harness,
+que não tem acesso ao veredito, com um `.get(subtype, "failed_verification")` de
+fallback. Prosa não basta; agora é estrutura (`runner/status.py`):
+
+- **`harness_outcome`** (`ok`/`timeout`/`infra_error`/`budget_exceeded`/`max_turns`)
+  responde *"a execução produziu uma medição válida?"*. É o que o harness sabe.
+- **`verification`** responde *"a entrega passou no verificador da tarefa?"*. É a
+  única fonte autorizada de `failed_verification` — juízo sobre o trabalho do modelo.
+- **`status`** é função PURA de (`harness_outcome`, `verification`), arbitrada num
+  único ponto (`status.resolve_status`). Desfecho de harness ruim manda no status
+  mesmo com veredito aprovado: o trabalho pode estar certo, mas a medição
+  (tempo/custo/turnos) está truncada — e é a medição que o benchmark publica. O
+  veredito segue anexo em `verification`, como evidência.
+- `pending_verification` = harness ok e veredito **ainda não medido** (ex.: verify
+  do LEB diferido pro pós-run). Não medido ≠ aprovado (§10.3). Distinto de
+  `verification.applicable:false`, que é *"a tarefa não tem verificador"*.
+
+Subtype desconhecido cai em `infra_error` **com a anomalia crua anexada**
+(`harness_anomaly`), nunca num fallback silencioso — `error_max_budget_usd` e
+`error_max_turns` seguem sendo hipótese não validada (§15), e um dia a string real
+pode ser outra.
+
+**Agregadores devem discriminar o que ficou de fora da nota.** Contar só
+`status == "completed"` foi parte de como o incidente passou despercebido: a rep
+anômala sumiu da mediana sem aviso.
 
 ### 10.5 Medindo "conseguiu sem perguntar ao usuário"
 

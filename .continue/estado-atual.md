@@ -230,6 +230,107 @@ Custo/tokens da Trilha B via `collect`: `cost_delta` ~5% neste caso multi-turno
 (C3 do proxy pega só parte do usage do CC — o follow-up #2; o C1 do harness é a
 verdade e o custo fica certo).
 
+## Integridade da medição — o incidente do Opus (19/07/2026, 0.7.0)
+
+**Y, não Z:** mudou o schema de resultados (novo enum + campos novos).
+
+Rodando `campaign_leb.sh M-opus48 LEB-100-A 3` ao vivo, a sessão foi interrompida
+no meio da rep2. Ao recuperar a rep1 (US$0,94, 215s, 21 turnos) com o
+`patch-results`, o registro saiu **autocontraditório**: `status:"failed_verification"`
+com `verification:{passed:true, regression:false, probes 2/4}`. O modelo tinha
+entregue trabalho válido e estava marcado como reprovado.
+
+**Três bugs, todos do tipo que só o caso pago ao vivo revela:**
+
+1. **Erro de API virando nota do modelo.** `track_b.run_harness` mapeava o desfecho
+   com `.get(subtype, "failed_verification")` — um **fallback punitivo**. O C1 real
+   do Opus tinha `subtype:"success"` **com** `is_error:true` e
+   `terminal_reason:"api_error"`: no 2.1.207 `subtype` e `is_error` são eixos
+   **independentes**, e o código tratava os dois como um só. Um erro transitório de
+   API virou juízo sobre a entrega. A spec **já proibia** isso em prosa (§10.4,
+   "Nunca colapse `infra_error` em `failed_verification`") — prosa não segurou.
+2. **O reparo pós-run só sabia rebaixar.** `leb.patch_results` fazia
+   `if passed is False: status = failed_verification` e nunca restaurava: por isso a
+   rep1 seguiu reprovada mesmo com o verify passando.
+3. **O C2 nunca foi achado — em 100% dos runs pagos.** O slug do transcript era
+   `cwd.replace('/','-')`, mas o Claude Code converte **todo** não-alfanumérico, e o
+   `TMPDIR` do macOS tem `_` (`...v1_qr40000gn`). Subagentes, ferramentas, thinking e
+   pico de contexto saíram `null` em todos os runs, **sem que nada acusasse a perda**.
+
+**A correção é estrutural, não um `if` a mais** — `runner/status.py`, fonte única:
+`status` virou função PURA de dois eixos ortogonais, `harness_outcome` (a execução
+produziu medição válida?) × `verification` (a entrega passou?). `classify_c1` não
+recebe veredito e é **incapaz** de escrever `failed_verification`; a string aparece
+uma única vez no runner, atrás de `passed is False`. Desfecho de harness ruim manda
+no status mesmo com verify aprovado (a medição está truncada, e é ela que se
+publica), com o veredito anexo como evidência. Subtype desconhecido → `infra_error`
+**com `harness_anomaly` crua**, nunca fallback mudo. O C2 passou a ser achado por
+`session_id` (imune à regra de slug), e `instrumentation.c2_found` distingue
+"métrica ausente" de "transcript não encontrado".
+
+**Durabilidade do dado pago** (o driver destruía trabalho pago): `campaign_leb.sh`
+fazia `: > "$OUT"` incondicional — retomar a campanha apagaria as reps já pagas.
+Agora **recusa** sobrescrever e ensina as saídas (`--from-rep N` para retomar,
+`--out` para campanha nova); log do proxy por invocação; entrada não-numérica aborta
+(antes rodava 0 reps e saía **0**, sucesso aparente); exit code honesto; o sumário
+discrimina o que ficou **fora da nota** (contar só `completed` foi parte de como o
+incidente passou despercebido). `patch_results` **funde** em vez de substituir: uma
+falha transitória (Docker parado) não apaga mais o ponteiro do workspace pago — a
+rep continua pendente e reverificável, em vez de virar perda permanente.
+`leb.py reclassify` repara registros anteriores à 0.7.0 sem rodar verify de novo
+(com `--dry-run` e proveniência em `_repairs`).
+
+✅ **Suíte offline: TUDO VERDE** via o novo `tests/run_all.sh` (proxy, track_a,
+track_b 30/30, LEB, canário + o novo `test_status_taxonomy_offline.py` com **67
+checks** cobrindo o incidente: os 7 cenários de desfecho, a garantia estrutural de
+que nenhum deles alcança o veredito, a fiação `collect`→`resolve_status`,
+promoção/rebaixamento, preservação do workspace em falha transitória, idempotência,
+os guards do driver, a RETOMADA preservando linhas pagas, e o C2 sob regra de slug
+trocada). O agregador existe porque a 0.6.2 ficou com um teste **vermelho sem
+ninguém notar** — a suíte era 5 arquivos rodados na mão. Ele roda cada suíte sob
+watchdog, reporta suíte PULADA (não conta como verde) e tem **piso de cobertura**:
+apagar checks da taxonomia é falha, não "verde".
+
+**Achados da revisão adversarial da própria 0.7.0** (4 lentes; 2 morreram por erro
+de API, 2 voltaram) — todos aplicados:
+- **`--out` relativo gravaria no vazio.** O `run.sh` faz `cd` pro workspace efêmero,
+  descartado a cada rep; o exemplo do runbook (`--out runs/x.jsonl`) era justamente
+  o caminho que perdia tudo. Absolutizado + teste.
+- **`collect` assumia `harness_outcome="ok"` por default** — o falso positivo
+  simétrico ao incidente (erro de API publicado como `completed`). Um mutante que
+  hardcodava `resolve_status("ok", ...)` passava a suíte inteira. Agora estoura alto
+  e há check da fiação.
+- **`reclassify` destruía registro da Trilha A** (sem os dois eixos, `completed`
+  virava `infra_error`) e apagaria `refused`/`invalid_isolation`. Guardado por trilha
+  e por status terminal.
+- **O teste do C2 era cobertura acidental de ambiente**: só exercitava o fallback
+  porque o `$TMPDIR` do macOS tem `_` fixo; em `/tmp` seria flaky (~12%). Agora força
+  a divergência de slug e exige `discovery == "glob"`.
+- **Os testes do driver dependiam do AI-BENCHMARK clonado** — sem ele o driver
+  abortava antes do guard e o check "arquivo pago intacto" passava **vazio**,
+  comparando o arquivo consigo mesmo. Agora montam um LEB falso em tmp.
+
+**Registrado por honestidade:** a fixture do incidente
+(`tests/fixtures/c1_api_error_opus48.json`) separa no `_provenance` o que foi
+**observado** do que foi **inferido** (`is_error` não era persistido antes da 0.7.0)
+e do que se **perdeu** (`api_error_status` ficou `null` — não inventamos, §15).
+
+### Pendências desta rodada
+
+- [ ] **Registro pago do Opus não foi reparado.** `runs/leb-LEB-100-A-M-opus48.jsonl`
+      segue com o `status` errado, por decisão do operador (fica como evidência do
+      incidente). `leb.py reclassify --dry-run` mostra o efeito:
+      `failed_verification → infra_error`. Aplicar é decisão sua.
+- [ ] **`error_max_budget_usd`/`error_max_turns` continuam hipótese** (§15): nunca
+      observados ao vivo. Se as strings reais forem outras, os cenários caem em
+      `infra_error` (conservador) — não mais num veredito, que era o risco antigo.
+- [ ] **`refused` e `invalid_isolation` são status órfãos** — declarados no schema e
+      nunca emitidos (auditoria reprovada aborta o run **sem** gravar linha, então o
+      caso inválido some em vez de aparecer marcado).
+- [ ] **`stop_reason:"stop_sequence"`** apareceu ao vivo e não está na
+      `config/harness-matrix.md` — a matriz precisa absorver a tabela cruzada
+      `is_error` × `subtype` × `terminal_reason`.
+
 ## Próximo — Fase 4 / campanha real
 
 Rodar de verdade (precisa de `.secrets/<vendor>`): fechar A5 ao vivo + A14

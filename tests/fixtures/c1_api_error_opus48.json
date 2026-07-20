@@ -1,0 +1,42 @@
+{
+  "_provenance": {
+    "origem": "reconstruído a partir do registro PAGO runs/leb-LEB-100-A-M-opus48.jsonl (rep1, run 2026-07-19T20-32-47Z_85ed92, US$0,94, 215s, 21 turnos)",
+    "observado": "subtype, stop_reason, terminal_reason, num_turns, duration_ms, duration_api_ms, total_cost_usd, usage.*, service_tier, speed, inference_geo, modelUsage.* — todos lidos do registro gravado",
+    "inferido": "is_error=true NÃO foi observado diretamente: até a 0.7.0 o collect.py não persistia esse campo. É inferência pelo caminho de código — com subtype='success', a ÚNICA condição capaz de disparar o ramo de erro em track_b.py:98-102 era is_error truthy. O status errado ('failed_verification') é o último traço sobrevivente de que is_error era true.",
+    "desconhecido": "api_error_status ficou null porque nunca foi persistido — NÃO inventamos um valor (§15). O campo existe no C1 real (config/harness-matrix.md); o que falta é a captura, corrigida na 0.7.0.",
+    "para_que_serve": "congela o caso do incidente como fixture: erro transitório de API com subtype=success. O runner tem de classificar isto como infra_error, jamais como failed_verification."
+  },
+  "type": "result",
+  "subtype": "success",
+  "is_error": true,
+  "result": "(texto final não preservado)",
+  "stop_reason": "stop_sequence",
+  "terminal_reason": "api_error",
+  "num_turns": 21,
+  "duration_ms": 213927,
+  "duration_api_ms": 191969,
+  "ttft_ms": null,
+  "total_cost_usd": 0.9444342499999999,
+  "api_error_status": null,
+  "permission_denials": [1, 2, 3, 4],
+  "usage": {
+    "input_tokens": 3277,
+    "output_tokens": 11639,
+    "cache_creation_input_tokens": 49975,
+    "cache_read_input_tokens": 577921,
+    "service_tier": "standard",
+    "speed": "standard",
+    "inference_geo": "global"
+  },
+  "modelUsage": {
+    "claude-opus-4-8": {
+      "inputTokens": 3277,
+      "outputTokens": 11639,
+      "cacheReadInputTokens": 577921,
+      "cacheCreationInputTokens": 49975,
+      "costUSD": 0.9444342499999999,
+      "contextWindow": 200000,
+      "maxOutputTokens": 64000
+    }
+  }
+}

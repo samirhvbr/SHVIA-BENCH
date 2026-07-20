@@ -11,6 +11,10 @@ empiricamente no Claude Code 2.1.207 (config/harness-matrix.md).
 """
 import json
 import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import status as status_mod  # noqa: E402
 
 
 def _cost(usage, price):
@@ -37,6 +41,13 @@ def parse_c1(c1):
         "stop_reason": c1.get("stop_reason"),
         "terminal_reason": c1.get("terminal_reason"),
         "subtype": c1.get("subtype"),
+        # PERSISTIR (0.7.0): antes, `is_error` e `api_error_status` eram lidos p/
+        # decidir o status e DESCARTADOS. O registro pago do Opus ficou
+        # autocontraditório e não-diagnosticável a partir de si mesmo — dava p/ ver
+        # `terminal_reason:"api_error"` mas não o gatilho. Num repo que se vende
+        # como auditável, perder o dado bruto da decisão é perder a evidência.
+        "is_error": c1.get("is_error"),
+        "api_error_status": c1.get("api_error_status"),
         "service_tier": usage.get("service_tier"),
         "speed": usage.get("speed"),
         "inference_geo": usage.get("inference_geo"),
@@ -152,6 +163,12 @@ def collect(harness_result, proxy_log, model_cfg, ids, verify):
     c2 = parse_c2(hr.get("transcript_path"), hr.get("transcript_kind", "claude-code"))
     c3 = parse_c3(proxy_log, (hr.get("started_utc"), hr.get("finished_utc")))
     price = model_cfg["price_per_mtok"]
+    # SEM default: `hr.get(..., "ok")` seria exatamente o fallback permissivo que
+    # esta versão existe para eliminar — um envelope sem desfecho viraria `ok` e,
+    # com o verify passando, seria promovido a `completed`. Falso POSITIVO num
+    # número publicado é tão ruim quanto o falso negativo do incidente. Ausência
+    # da chave é bug de programação: estoure alto, não adivinhe.
+    harness_outcome = hr["harness_outcome"]
 
     # verdade p/ tokens/custo: C3 se tiver, senão C1 (§10.1)
     usage_truth = (c3 or {}).get("usage") if c3 and any((c3.get("usage") or {}).values()) else c1.get("usage", {})
@@ -173,8 +190,15 @@ def collect(harness_result, proxy_log, model_cfg, ids, verify):
         "service_tier": c1.get("service_tier"), "speed": c1.get("speed"),
         "inference_geo": c1.get("inference_geo"),
         "started_utc": hr.get("started_utc"), "finished_utc": hr.get("finished_utc"),
-        "status": hr.get("status"), "stop_reason": c1.get("stop_reason"),
+        # `status` é FUNÇÃO PURA de (desfecho do harness, veredito do verificador).
+        # O collect não copia mais um status pronto do harness — o harness não tem
+        # como saber se a entrega passou, e não pode emitir juízo sobre ela.
+        "status": status_mod.resolve_status(harness_outcome, verify),
+        "harness_outcome": harness_outcome,
+        "harness_anomaly": hr.get("harness_anomaly"),
+        "stop_reason": c1.get("stop_reason"),
         "terminal_reason": c1.get("terminal_reason"), "subtype": c1.get("subtype"),
+        "is_error": c1.get("is_error"), "api_error_status": c1.get("api_error_status"),
         "harness": {"name": "claude-code", "version": os.environ.get("EXPECT_CLAUDE_VERSION")},
         "time": {
             "e2e_ms": e2e, "harness_duration_ms": dur, "api_duration_ms": c1.get("api_duration_ms"),
@@ -201,7 +225,18 @@ def collect(harness_result, proxy_log, model_cfg, ids, verify):
         "effort": {"reasoning_visible": None,
                    "thinking_blocks_count": (c2 or {}).get("thinking_blocks_count")},
         "autonomy": {"permission_blocked_count": c1.get("permission_denials"),
-                     "hit_max_turns": hr.get("status") == "max_turns"},
+                     "hit_max_turns": harness_outcome == "max_turns"},
+        # Qual camada foi de fato capturada. Sem isto, um `subagent_count:null` é
+        # indistinguível de "não achei o transcript" — que foi o que aconteceu em
+        # 100% dos runs pagos até a 0.6.1, silenciosamente (§10.3, no espírito:
+        # um null sem causa registrada não é medida, é buraco).
+        "instrumentation": {
+            "c1_found": bool(hr.get("c1")),
+            "c2_found": c2 is not None,
+            "c3_found": c3 is not None,
+            "transcript_discovery": hr.get("transcript_discovery"),
+            "transcript_path": hr.get("transcript_path"),
+        },
         "tools": ({"tool_calls_total": c2.get("tool_calls_total"),
                    "by_name": c2.get("tool_calls_by_name")} if c2 else None),
         "verification": verify,

@@ -15,8 +15,10 @@ Flags/campos do Claude Code confirmados no 2.1.207 (config/harness-matrix.md).
 `--claude-bin` permite injetar um harness fake p/ teste offline.
 """
 import argparse
+import glob
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -24,14 +26,47 @@ import uuid
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import collect as collect_mod  # noqa: E402
+import status as status_mod  # noqa: E402
 
 
-def transcript_path(config_dir, workspace, session_id):
-    """$CLAUDE_CONFIG_DIR/projects/<cwd-slug>/<session>.jsonl (confirmado 2.1.207).
-    O slug é o caminho REAL do cwd com '/' → '-'."""
-    real = os.path.realpath(workspace)
-    slug = real.replace("/", "-")
-    return os.path.join(config_dir, "projects", slug, f"{session_id}.jsonl")
+def transcript_slug(workspace):
+    """cwd REAL → nome do diretório em $CLAUDE_CONFIG_DIR/projects/.
+
+    HIPÓTESE A VALIDAR (§6.2/§15). Contra a ÚNICA amostra ao vivo do 2.1.207 que
+    temos (run 2026-07-19T20-36-24Z_a06ea3), a regra observada é "todo caractere
+    não-alfanumérico vira '-'". A amostra prova '/'→'-' e '_'→'-'; NÃO prova nada
+    sobre '.', porque o path da amostra não tinha ponto. Três regras candidatas
+    (`[/._]`, `[/_]`, `[^A-Za-z0-9]`) reproduzem a amostra igualmente bem.
+
+    Por isso este slug é só FAST-PATH: quem acha o transcript de verdade é o
+    `find_transcript`, por session_id — imune à regra de slug.
+    """
+    return re.sub(r"[^A-Za-z0-9]", "-", os.path.realpath(workspace))
+
+
+def find_transcript(config_dir, workspace, session_id):
+    """Localiza o C2. Retorna (path|None, discovery ∈ slug|glob|glob_ambiguous|none).
+
+    O bug que isto corrige: até a 0.6.1 o slug era `cwd.replace('/','-')`, que NÃO
+    é a regra do Claude Code (ele também troca '_'). Em TODO run real o cwd era
+    `$TMPDIR/...` — e o TMPDIR do macOS contém '_' —, então o C2 NUNCA foi achado:
+    subagentes, ferramentas, thinking e pico de contexto saíram `null` em 100% dos
+    runs pagos, sem que nada acusasse a perda.
+
+    A correção não é acertar a regra do slug — é não depender dela. O
+    `--session-id` é um uuid4 que NÓS geramos, então o NOME do arquivo é único e
+    conhecido; achar por ele sobrevive a mudanças de slug entre versões do CC.
+    """
+    projects = os.path.join(config_dir, "projects")
+    fast = os.path.join(projects, transcript_slug(workspace), f"{session_id}.jsonl")
+    if os.path.exists(fast):
+        return fast, "slug"
+    hits = sorted(glob.glob(os.path.join(projects, "*", f"{session_id}.jsonl")))
+    if len(hits) == 1:
+        return hits[0], "glob"
+    if hits:
+        return hits[0], "glob_ambiguous"   # não deveria ocorrer com uuid4
+    return None, "none"
 
 
 def build_argv_claude_code(bin_, prompt, model_id, session_id, opts):
@@ -68,12 +103,31 @@ def parse_result(harness, stdout):
 
 
 def run_harness(harness, model_cfg, prompt, workspace, config_dir, opts):
-    """Invoca o harness uma vez. Retorna dict com C1 (result), paths e timing/status."""
+    """Invoca o harness uma vez.
+
+    Retorna `harness_outcome` (∈ status.HARNESS_OUTCOMES) e DELIBERADAMENTE **não**
+    retorna `status`: o harness não tem acesso a veredito e não pode arbitrar o
+    status do registro. Quem arbitra é `status.resolve_status`, já com o veredito
+    do verificador em mãos. Os testes checam a AUSÊNCIA da chave `status` aqui —
+    é a garantia estrutural de que o bug de 19/07/2026 não volta por outro caminho.
+    """
     session_id = str(uuid.uuid4())
     argv = build_argv(harness, prompt, model_cfg["id"], session_id, opts)
     t0 = time.perf_counter()
     started = time.time()
-    status, c1, err = "completed", None, None
+    outcome, c1, err, anomaly = "ok", None, None, None
+    tk = (harness.get("transcript") or {}).get("kind")
+
+    def envelope(**extra):
+        base = {"harness_outcome": outcome, "session_id": session_id, "c1": c1,
+                "transcript_path": None, "transcript_discovery": "none",
+                "transcript_kind": tk, "workspace": workspace,
+                "e2e_ms": None, "started_utc": round(started, 3),
+                "finished_utc": round(time.time(), 3),
+                "error": err, "harness_anomaly": anomaly}
+        base.update(extra)
+        return base
+
     try:
         # garante que o harness escreva o transcript no MESMO config dir que
         # o track_b vai ler (senão o C2 some). Idempotente sob run.sh.
@@ -82,40 +136,38 @@ def run_harness(harness, model_cfg, prompt, workspace, config_dir, opts):
                               timeout=opts["timeout_s"], env=child_env)
         e2e_ms = round((time.perf_counter() - t0) * 1000, 1)
         if proc.returncode != 0 and not proc.stdout.strip():
-            status, err = "infra_error", (proc.stderr or "")[:500]
+            outcome, err = "infra_error", (proc.stderr or "")[:500]
         else:
             try:
                 c1 = parse_result(harness, proc.stdout)
             except json.JSONDecodeError:
-                status, err = "infra_error", "result JSON ilegível: " + proc.stdout[:300]
+                outcome, err = "infra_error", "result JSON ilegível: " + proc.stdout[:300]
     except subprocess.TimeoutExpired:
         e2e_ms = round((time.perf_counter() - t0) * 1000, 1)
-        status = "timeout"
+        outcome = "timeout"
     except FileNotFoundError:
-        return {"status": "infra_error", "error": f"harness ausente: {harness['bin']}"}
+        outcome, err = "infra_error", f"harness ausente: {harness['bin']}"
+        return envelope()
 
-    # limites → status (subtype REAL do 2.1.207 só confirmado p/ 'success'; ver §matrix)
-    if c1 and status == "completed":
-        sub = c1.get("subtype")
-        if c1.get("is_error") or (sub and sub != "success"):
-            status = {"error_max_budget_usd": "budget_exceeded",
-                      "error_max_turns": "max_turns"}.get(sub, "failed_verification")
-    tk = (harness.get("transcript") or {}).get("kind")
-    tpath = transcript_path(config_dir, workspace, session_id) if tk == "claude-code" else None
-    return {
-        "status": status, "session_id": session_id, "c1": c1,
-        "transcript_path": tpath, "transcript_kind": tk,
-        "workspace": workspace, "e2e_ms": e2e_ms,
-        "started_utc": round(started, 3), "finished_utc": round(time.time(), 3),
-        "error": err,
-    }
+    # C1 → desfecho de harness. Sem acesso a veredito, por construção (status.py).
+    if c1 is not None and outcome == "ok":
+        outcome, anomaly = status_mod.classify_c1(c1)
+
+    tpath, disc = (None, "none")
+    if tk == "claude-code":
+        tpath, disc = find_transcript(config_dir, workspace, session_id)
+    return envelope(e2e_ms=e2e_ms, transcript_path=tpath, transcript_discovery=disc)
 
 
 def run_verify(task_dir, workspace):
     """Roda tasks/<id>/verify.sh contra o workspace (LEB_CODE_DIR = workspace)."""
     vs = os.path.join(task_dir, "verify.sh")
     if not os.path.exists(vs):
-        return {"passed": None, "exit_code": None, "note": "sem verify.sh"}
+        # `applicable:false` = a tarefa NÃO TEM verificador (nada a medir) — é
+        # diferente de "o verificador ainda não rodou". O resolve_status distingue
+        # os dois: o 1º pode ser `completed`, o 2º vira `pending_verification`.
+        return {"passed": None, "exit_code": None, "applicable": False,
+                "note": "sem verify.sh"}
     env = dict(os.environ, LEB_CODE_DIR=workspace, WORK=workspace)
     try:
         p = subprocess.run(["bash", vs], cwd=workspace, env=env,
@@ -187,9 +239,13 @@ def main():
     completed = 0
     for rep in range(1, args.reps + 1):
         hr = run_harness(harness, model_cfg, prompt, workspace, config_dir, opts)
-        if hr["status"] not in ("completed", "failed_verification"):
-            verify = {"passed": None, "exit_code": None}
-        elif args.leb_instance:
+        # VERIFY SEMPRE, em QUALQUER desfecho de harness. Um run que estourou o
+        # orçamento ou morreu de erro de API ainda pode ter entregue trabalho
+        # correto — e foi PAGO; o veredito é evidência anexa a todo registro.
+        # (Pular o verify fora do caminho feliz teria destruído justamente a
+        # evidência `passed:true, probes 2/4` que revelou o bug do incidente.)
+        # Só a ARBITRAGEM muda: resolve_status faz o desfecho de harness mandar.
+        if args.leb_instance:
             # verify do LEB roda docker → NÃO pode ser aqui (env -i quebra o
             # `docker compose`, que precisa do HOME real). Fica PENDENTE; o driver
             # (campaign_leb.sh) roda o leb.verify pós-run, no ambiente completo.
@@ -208,10 +264,18 @@ def main():
                 f.write(line + "\n")
         else:
             print(line)
-        completed += rec.get("status") == "completed"
-        print(f"  rep{rep}: {rec.get('status')} · turns={(rec.get('agents') or {}).get('main_agent_turns')}"
+        # o exit code responde "esta rep produziu uma MEDIÇÃO utilizável?" — isto é,
+        # o desfecho do harness. O veredito pode chegar depois (patch pós-run), e um
+        # `pending_verification` legítimo não é falha do track_b.
+        completed += hr["harness_outcome"] == "ok"
+        print(f"  rep{rep}: {rec.get('status')} (harness={hr['harness_outcome']})"
+              f" · turns={(rec.get('agents') or {}).get('main_agent_turns')}"
               f" · US${(rec.get('cost') or {}).get('cost_usd_computed')}"
-              f" · verify={(rec.get('verification') or {}).get('passed')}", file=sys.stderr)
+              f" · verify={(rec.get('verification') or {}).get('passed')}"
+              f" · C2={hr.get('transcript_discovery')}", file=sys.stderr)
+        if hr.get("harness_anomaly"):
+            print(f"        anomalia do harness (não é veredito): {hr['harness_anomaly']}",
+                  file=sys.stderr)
     return 0 if completed == args.reps else 1
 
 
