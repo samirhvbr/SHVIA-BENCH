@@ -331,6 +331,56 @@ e do que se **perdeu** (`api_error_status` ficou `null` — não inventamos, §1
       `config/harness-matrix.md` — a matriz precisa absorver a tabela cruzada
       `is_error` × `subtype` × `terminal_reason`.
 
+## 1ª campanha oficial — Opus 4.8 × LEB-100-A (20/07/2026)
+
+`campaign_leb.sh M-opus48 LEB-100-A 3 --out runs/leb-LEB-100-A-M-opus48-campanha1.jsonl`
+— 3 reps limpas (sem `api_error`), **3/3 `completed`**, US$3,4161 no total.
+
+| rep | probes | turnos | tools | thinking | pico ctx | custo | Δ custo |
+|-----|--------|--------|-------|----------|----------|-------|---------|
+| 1 | 2/4 | 19 | 18 | 5 | 50.593 | US$1,0012 | 0,0% |
+| 2 | 3/4 | 27 | 26 | 12 | 61.178 | US$1,3855 | 0,0% |
+| 3 | 2/4 | 18 | 17 | 7 | 52.166 | US$1,0293 | **38,14%** |
+
+**Nota oficial (PROTOCOL §4, mediana de 3): `probes 2/4`, sem regressão** — mesmo
+placar do Haiku 4.5 no mesmo caso, a ~3,4× o custo (mediana US$1,0293 vs US$0,30).
+Custo real por rep do Opus ficou **acima** da estimativa de US$0,94 usada até aqui.
+
+**O C2 apareceu pela primeira vez** (`c2_found:true` nas 3 reps): subagentes (0),
+ferramentas por nome (rep2: Bash 9 · Edit 11 · Read 6), thinking e pico de contexto
+— tudo que saía `null` até a 0.6.1 por causa do bug do slug. A correção da 0.7.0 se
+confirma em dado pago.
+
+### Inspeção do Δ 38,14% da rep3 (§10.1 manda inspecionar >2%) — 4 achados
+
+O gatilho não foi o C3: **o proxy capturou `usage` vazio em 0 de 53 chamadas.**
+
+1. **O `usage` top-level do C1 nem sempre é o agregado do run.** Na rep3 ele
+   subestima (US$0,6367 vs US$1,0293 do `total_cost_usd`). Deduplicando o C2 por
+   `message.id`, o custo bate com o do harness **na 6ª casa** (US$1,029316 = 
+   US$1,029316) — ou seja, **o C2 dedup é uma recomputação independente válida**, e
+   o `usage` top-level do C1 não é. Nas reps 1 e 2 o top-level fechava exato — o
+   campo é **inconsistente entre reps do mesmo modelo**, não sempre errado.
+2. **Somar o C2 ingenuamente conta 2× a 3×.** O transcript da rep3 tem 29 mensagens
+   com `usage` para **14 `message.id` distintos** (streaming emite várias linhas por
+   mensagem). Soma crua = US$1,7692; dedup = US$1,0293. Quem recomputar do C2 **tem
+   de deduplicar por `message.id`**.
+3. **O C3 não serve de verdade-base para custo na Trilha B hoje** — é o follow-up nº2
+   da 0.5.1, agora confirmado em escala (0/53 chamadas com `usage`). O proxy é a peça
+   que deveria ser a verdade-base (§4.4); enquanto o parse do SSE do CC não pegar o
+   usage, a precedência C3>C1 (§10.1) não tem efeito na Trilha B.
+4. **Os transcripts das reps anteriores são destruídos.** O `run.sh` recria o HOME
+   sandbox do template a cada rep, então só o C2 da **última** rep sobrevive em disco
+   (as métricas já coletadas ficam no `results.jsonl`, mas a reanálise pós-hoc só é
+   possível para a última). Foi por isso que os achados 1–2 só puderam ser provados
+   na rep3.
+
+**Decisão de operador pendente (§14):** mudar a fonte de verdade de custo/tokens da
+Trilha B para **C2 dedup** (hoje: C3→C1) muda o número que o benchmark publica —
+não foi feito unilateralmente. As opções são (a) C2-dedup como verdade quando o C3
+vier vazio, (b) manter C1 e publicar `cost_delta_pct` como ressalva, (c) consertar o
+parse do SSE do CC no proxy e restaurar o C3 como verdade-base.
+
 ## Próximo — Fase 4 / campanha real
 
 Rodar de verdade (precisa de `.secrets/<vendor>`): fechar A5 ao vivo + A14
