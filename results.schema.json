@@ -50,7 +50,12 @@
         "c2_found": {"type": ["boolean", "null"]},
         "c3_found": {"type": ["boolean", "null"]},
         "transcript_discovery": {"enum": ["slug", "glob", "glob_ambiguous", "none", null], "description": "COMO o C2 foi achado. 'glob' ⇒ a regra de slug do harness mudou (§6.2) — o campo é a validação contínua dessa hipótese."},
-        "transcript_path": {"type": ["string", "null"]}
+        "transcript_path": {"type": ["string", "null"]},
+        "c2_usage_lines": {"type": ["integer", "null"], "description": "linhas do transcript com `usage` (antes do dedup)"},
+        "c2_usage_messages": {"type": ["integer", "null"], "description": "`message.id` distintos (depois do dedup). lines > messages ⇒ o streaming repetiu mensagens; somar linha a linha inflaria o custo (§10.1)."},
+        "c2_usage_conflicts": {"type": ["integer", "null"], "description": "grupos do mesmo `message.id` cujas linhas DISCORDAM em algum bucket. 0 prova que só houve repetição idêntica (o observado no 2.1.207); >0 marca o registro para inspeção — é o falsificador da hipótese do §15, para que a fusão não escolha em silêncio."},
+        "c3_calls": {"type": ["integer", "null"], "description": "chamadas do proxy na janela do caso"},
+        "c3_usage_calls": {"type": ["integer", "null"], "description": "quantas dessas trouxeram `usage`. O C3 só vira verdade com cobertura TOTAL (usage_calls == calls): presença parcial publicaria ordens de grandeza a menos com o selo da camada mais confiável."}
       }
     },
     "prompt_sha256": {"type": ["string", "null"], "description": "hashes diferentes entre modelos na mesma tarefa INVALIDAM o resultado (§8.2)"},
@@ -96,8 +101,12 @@
       "description": "SEMPRE recalcule (§10.2). cost_per_task_passed é a métrica que mais reordena rankings.",
       "properties": {
         "cost_usd_harness": {"type": ["number", "null"]},
-        "cost_usd_computed": {"type": ["number", "null"], "description": "tokens (C3) × tabela de preços do manifesto"},
+        "cost_usd_computed": {"type": ["number", "null"], "description": "tokens da fonte em `usage_source` × tabela de preços do manifesto"},
         "cost_delta_pct": {"type": ["number", "null"]},
+        "usage_source": {
+          "enum": ["c3_proxy", "c2_transcript_dedup", "c1_harness", "a_api_response", null],
+          "description": "De ONDE vieram os tokens recomputados (§10.1). Obrigatório para ler o `cost_delta_pct`: o mesmo delta significa coisas diferentes conforme a fonte. Trilha B: `c3_proxy` (só com cobertura TOTAL da janela) > `c2_transcript_dedup` (agregado por `message.id` — somar linha a linha conta 2–3x, 29 linhas → 14 ids numa rep medida) > `c1_harness`. Trilha A: `a_api_response` (o runner é o cliente; o usage vem da resposta da API). `null` = nenhuma camada trouxe tokens — então `cost_usd_computed` também é null (§10.3), nunca 0."
+        },
         "budget_exceeded": {"type": ["boolean", "null"]},
         "by_component": {
           "type": ["object", "null"],

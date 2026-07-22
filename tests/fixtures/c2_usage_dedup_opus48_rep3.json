@@ -1,0 +1,280 @@
+{
+  "_provenance": {
+    "origem": "rep3 da 1ª campanha oficial Opus 4.8 × LEB-100-A (20/07/2026), registro PAGO runs/leb-LEB-100-A-M-opus48-campanha1.jsonl",
+    "o_que_e": "apenas os pares (message.id, usage) do transcript, na ordem em que apareceram. Nenhum prompt, nenhum código do legado, nenhum texto do modelo — só os números, para o repo público.",
+    "ids": "anonimizados (msg_01..msg_14) PRESERVANDO o padrão de repetição do original",
+    "por_que": "congela a prova numérica: 29 linhas de usage para 14 message.id distintos; dedup reproduz o total_cost_usd do harness na 6ª casa decimal, soma crua infla 72%.",
+    "harness_total_cost_usd": 1.0293165,
+    "soma_crua_esperada": 1.76923,
+    "preco_opus48_por_mtok": {
+      "input": 5.0,
+      "output": 25.0,
+      "cache_write": 6.25,
+      "cache_read": 0.5
+    },
+    "exatidao": "o agregado dedup bate com o valor pago em TODOS os dígitos (não 'na 6ª casa'): a soma dos 14 usage × tabela de preços dá exatamente este float."
+  },
+  "usage_lines": [
+    {
+      "id": "msg_01",
+      "usage": {
+        "input_tokens": 2624,
+        "output_tokens": 206,
+        "cache_creation_input_tokens": 4043,
+        "cache_read_input_tokens": 24258
+      }
+    },
+    {
+      "id": "msg_01",
+      "usage": {
+        "input_tokens": 2624,
+        "output_tokens": 206,
+        "cache_creation_input_tokens": 4043,
+        "cache_read_input_tokens": 24258
+      }
+    },
+    {
+      "id": "msg_01",
+      "usage": {
+        "input_tokens": 2624,
+        "output_tokens": 206,
+        "cache_creation_input_tokens": 4043,
+        "cache_read_input_tokens": 24258
+      }
+    },
+    {
+      "id": "msg_02",
+      "usage": {
+        "input_tokens": 29,
+        "output_tokens": 668,
+        "cache_creation_input_tokens": 2780,
+        "cache_read_input_tokens": 28301
+      }
+    },
+    {
+      "id": "msg_02",
+      "usage": {
+        "input_tokens": 29,
+        "output_tokens": 668,
+        "cache_creation_input_tokens": 2780,
+        "cache_read_input_tokens": 28301
+      }
+    },
+    {
+      "id": "msg_02",
+      "usage": {
+        "input_tokens": 29,
+        "output_tokens": 668,
+        "cache_creation_input_tokens": 2780,
+        "cache_read_input_tokens": 28301
+      }
+    },
+    {
+      "id": "msg_02",
+      "usage": {
+        "input_tokens": 29,
+        "output_tokens": 668,
+        "cache_creation_input_tokens": 2780,
+        "cache_read_input_tokens": 28301
+      }
+    },
+    {
+      "id": "msg_02",
+      "usage": {
+        "input_tokens": 29,
+        "output_tokens": 668,
+        "cache_creation_input_tokens": 2780,
+        "cache_read_input_tokens": 28301
+      }
+    },
+    {
+      "id": "msg_02",
+      "usage": {
+        "input_tokens": 29,
+        "output_tokens": 668,
+        "cache_creation_input_tokens": 2780,
+        "cache_read_input_tokens": 28301
+      }
+    },
+    {
+      "id": "msg_03",
+      "usage": {
+        "input_tokens": 32,
+        "output_tokens": 6249,
+        "cache_creation_input_tokens": 37799,
+        "cache_read_input_tokens": 0
+      }
+    },
+    {
+      "id": "msg_04",
+      "usage": {
+        "input_tokens": 31,
+        "output_tokens": 75,
+        "cache_creation_input_tokens": 6319,
+        "cache_read_input_tokens": 37799
+      }
+    },
+    {
+      "id": "msg_05",
+      "usage": {
+        "input_tokens": 29,
+        "output_tokens": 639,
+        "cache_creation_input_tokens": 121,
+        "cache_read_input_tokens": 44118
+      }
+    },
+    {
+      "id": "msg_05",
+      "usage": {
+        "input_tokens": 29,
+        "output_tokens": 639,
+        "cache_creation_input_tokens": 121,
+        "cache_read_input_tokens": 44118
+      }
+    },
+    {
+      "id": "msg_05",
+      "usage": {
+        "input_tokens": 29,
+        "output_tokens": 639,
+        "cache_creation_input_tokens": 121,
+        "cache_read_input_tokens": 44118
+      }
+    },
+    {
+      "id": "msg_06",
+      "usage": {
+        "input_tokens": 157,
+        "output_tokens": 348,
+        "cache_creation_input_tokens": 805,
+        "cache_read_input_tokens": 44239
+      }
+    },
+    {
+      "id": "msg_07",
+      "usage": {
+        "input_tokens": 29,
+        "output_tokens": 407,
+        "cache_creation_input_tokens": 642,
+        "cache_read_input_tokens": 45044
+      }
+    },
+    {
+      "id": "msg_07",
+      "usage": {
+        "input_tokens": 29,
+        "output_tokens": 407,
+        "cache_creation_input_tokens": 642,
+        "cache_read_input_tokens": 45044
+      }
+    },
+    {
+      "id": "msg_07",
+      "usage": {
+        "input_tokens": 29,
+        "output_tokens": 407,
+        "cache_creation_input_tokens": 642,
+        "cache_read_input_tokens": 45044
+      }
+    },
+    {
+      "id": "msg_08",
+      "usage": {
+        "input_tokens": 29,
+        "output_tokens": 442,
+        "cache_creation_input_tokens": 572,
+        "cache_read_input_tokens": 45686
+      }
+    },
+    {
+      "id": "msg_09",
+      "usage": {
+        "input_tokens": 32,
+        "output_tokens": 500,
+        "cache_creation_input_tokens": 583,
+        "cache_read_input_tokens": 46258
+      }
+    },
+    {
+      "id": "msg_10",
+      "usage": {
+        "input_tokens": 32,
+        "output_tokens": 896,
+        "cache_creation_input_tokens": 644,
+        "cache_read_input_tokens": 46841
+      }
+    },
+    {
+      "id": "msg_11",
+      "usage": {
+        "input_tokens": 27,
+        "output_tokens": 483,
+        "cache_creation_input_tokens": 1040,
+        "cache_read_input_tokens": 47485
+      }
+    },
+    {
+      "id": "msg_11",
+      "usage": {
+        "input_tokens": 27,
+        "output_tokens": 483,
+        "cache_creation_input_tokens": 1040,
+        "cache_read_input_tokens": 47485
+      }
+    },
+    {
+      "id": "msg_12",
+      "usage": {
+        "input_tokens": 29,
+        "output_tokens": 196,
+        "cache_creation_input_tokens": 622,
+        "cache_read_input_tokens": 48525
+      }
+    },
+    {
+      "id": "msg_12",
+      "usage": {
+        "input_tokens": 29,
+        "output_tokens": 196,
+        "cache_creation_input_tokens": 622,
+        "cache_read_input_tokens": 48525
+      }
+    },
+    {
+      "id": "msg_12",
+      "usage": {
+        "input_tokens": 29,
+        "output_tokens": 196,
+        "cache_creation_input_tokens": 622,
+        "cache_read_input_tokens": 48525
+      }
+    },
+    {
+      "id": "msg_13",
+      "usage": {
+        "input_tokens": 160,
+        "output_tokens": 157,
+        "cache_creation_input_tokens": 240,
+        "cache_read_input_tokens": 49147
+      }
+    },
+    {
+      "id": "msg_14",
+      "usage": {
+        "input_tokens": 27,
+        "output_tokens": 3371,
+        "cache_creation_input_tokens": 2752,
+        "cache_read_input_tokens": 49387
+      }
+    },
+    {
+      "id": "msg_14",
+      "usage": {
+        "input_tokens": 27,
+        "output_tokens": 3371,
+        "cache_creation_input_tokens": 2752,
+        "cache_read_input_tokens": 49387
+      }
+    }
+  ]
+}

@@ -97,9 +97,19 @@ Campos-chave:
 - `harness_outcome` + `harness_anomaly`: desfecho da execução e, quando não
   classificável, os sinais crus do C1 (subtype/is_error/terminal_reason),
 - `instrumentation`: `c2_found`/`transcript_discovery` — se vier `c2_found:false`,
-  subagentes/ferramentas/thinking daquela rep **não foram medidos** (não são zero),
+  subagentes/ferramentas/thinking daquela rep **não foram medidos** (não são zero).
+  Para conferir o custo: `c2_usage_lines`/`c2_usage_messages` mostram o colapso do
+  dedup (ex.: 29 → 14) e `c3_calls`/`c3_usage_calls` mostram a cobertura do proxy —
+  é o que explica **por que** aquela fonte foi escolhida. **`c2_usage_conflicts > 0`
+  pede inspeção**: significa que duas linhas do mesmo `message.id` discordaram, ou
+  seja, o formato do transcript mudou (§15),
 - `cost`: `cost_usd_harness` vs `cost_usd_computed` + `cost_delta_pct`
-  (**>2% → inspeção**, §10.1 — costuma revelar chamada não contabilizada),
+  (**>2% → inspeção**, §10.1 — costuma revelar chamada não contabilizada). **Leia
+  junto com `cost.usage_source`** (`c3_proxy` > `c2_transcript_dedup` > `c1_harness`):
+  o mesmo delta significa coisas diferentes conforme a fonte (Trilha A grava
+  `a_api_response`). Registro **sem** esse campo é anterior à 0.8.0, quando o `usage`
+  do C1 era usado direto — e ele **não** é agregado confiável do run. `usage_source`
+  e `cost_usd_computed` em `null` = nenhuma camada trouxe tokens (≠ custo zero),
 - `time`: `ttft_ms_first_call`, `e2e_ms`, `api_duration_ms`,
 - `agents`/`tools`/`effort`: subagentes, ferramentas, thinking (Trilha B, via C2),
 - `verification` (LEB): `passed`, `regression`, `probes_corrigidas/total`.

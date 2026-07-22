@@ -478,7 +478,63 @@ rubric:
 | **C2 — Transcrição JSONL** | `$CLAUDE_CONFIG_DIR/projects/<proj>/<sessão>.jsonl` | Blocos de `thinking`, cada `tool_use`/`tool_result`, `usage` por turno, cadeia `uuid`/`parentUuid`, sidechains de subagente (`isSidechain`, `agentId`) | Formato interno, sem contrato de estabilidade |
 | **C3 — Proxy local** | `runs/<id>/proxy.jsonl` | TTFT real por chamada, tempo de rede, `usage` bruto da API, headers de provedor, destino de cada requisição | Nenhuma, se o proxy for passivo |
 
-**Regra de precedência:** para custo e tokens, C3 é a verdade; C1 é conferência. Se divergirem além de 2%, o caso vai para inspeção — a divergência costuma revelar chamadas que o harness não contabiliza.
+**Regra de precedência (revista na 0.8.0):** para custo e tokens, **C3 → C2-dedup →
+C1**. O campo `cost.usage_source` registra qual camada foi usada: **sem ele o
+`cost_delta_pct` não é interpretável**, porque o mesmo delta significa coisas
+diferentes conforme a fonte. Nenhuma camada com tokens ⇒ `usage_source` e
+`cost_usd_computed` saem `null` — **nunca 0**, senão um run pago entra como grátis
+na mediana (§10.3).
+
+O C3 só é eleito com **cobertura total da janela** (`usage_calls == calls`).
+Presença não basta: uma chamada instrumentada entre 53 publicaria 4 ordens de
+grandeza a menos, com o selo da camada de maior confiança — e "SSE meio consertado"
+é o estado mais provável enquanto o follow-up do proxy estiver aberto.
+
+Se o recomputado divergir do `total_cost_usd` além de 2%, o caso vai para inspeção.
+**O que esse alarme detecta mudou junto com a fonte:** com o C3 (externo), ele
+revelava chamadas que o harness não contabiliza; com `c2_transcript_dedup` ou
+`c1_harness`, os dois lados da conta saem de arquivos do próprio harness, então o
+que ele pega é **incoerência interna do harness** — foi exatamente assim que o C1
+inconsistente apareceu. Uma chamada que o harness não registre em lugar nenhum não
+aparece em nenhum dos dois lados e o delta fica em 0,00%: essa detecção só volta
+quando o C3 voltar a capturar.
+
+Por que o C1 deixou de ser o 2º na fila (medido na 1ª campanha oficial, 20/07/2026):
+
+- **O `usage` top-level do C1 nem sempre é o agregado do run.** Em 3 reps do mesmo
+  modelo, no mesmo caso, ele fechou exato em duas e **subestimou 38% na terceira**.
+  Não é sempre errado — é **inconsistente**, que para um instrumento é pior.
+- **E o déficit não é arredondamento: é uma chamada inteira faltando.** `C2 − C1`
+  na rep3 bate campo a campo com **uma única mensagem** (in 32, out 6249,
+  cache_creation 37799, cache_read **0** — a única chamada de cache frio do run). O
+  C1 não mediu por baixo; ele **omitiu uma chamada**.
+- **O C2 deduplicado por `message.id` reproduziu o `total_cost_usd` em todos os
+  dígitos** (US$1,0293165). É recomputação independente válida.
+- **Deduplicar não é opcional:** o transcript repete a mesma mensagem (streaming) —
+  29 linhas com `usage` para 14 `message.id` distintos na rep medida. Somar linha a
+  linha dá US$1,7692 contra US$1,0293 reais: **inflaria o custo em 72%**.
+  As duplicatas observadas no 2.1.207 são idênticas; caso alguma versão emita
+  `usage` progressivo, o `collect` fica com a linha de **maior total** — nunca
+  mistura campos de linhas diferentes (§15).
+
+O C3 **continua no topo por princípio**: é a única camada externa ao harness (§4.4),
+e portanto a única que não depende da honestidade de quem está sendo medido. Mas
+hoje ele não captura `usage` do Claude Code (0 de 53 chamadas na 1ª campanha), então
+na prática quem manda na Trilha B é o C2-dedup. **Consertar o parse do SSE do CC no
+proxy é o que devolve a verdade-base ao lugar certo** — segue como follow-up aberto.
+
+**A tensão assumida:** a tabela acima lista o C2 como "formato interno, sem contrato
+de estabilidade", e esta seção o promove a fonte de fato do número publicado. As duas
+afirmações são verdadeiras e a escolha é deliberada — entre uma fonte instável que
+reproduz o valor pago em todos os dígitos e uma fonte estável que omitiu uma chamada
+inteira, o benchmark prefere a que mede certo, e paga por isso com vigilância: o
+`c2_usage_conflicts` e o `transcript_discovery` existem para que uma mudança de
+formato apareça como sinal no registro, em vez de virar erro mudo (§15).
+
+**Limite da evidência:** a exatidão do C2-dedup está provada em **n=1**. O `run.sh`
+recria o HOME sandbox por rep, então só o transcript da última rep sobrevive — as
+reps 1 e 2, em que o C1 fechava exato, não podem mais ser reconferidas. A troca de
+precedência é defensável pelo que se mediu, não por uma amostra grande.
 
 `collect.py` funde as três camadas em uma linha de `results.jsonl` por execução.
 

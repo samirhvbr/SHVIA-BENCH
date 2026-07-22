@@ -206,8 +206,14 @@ def run_case(model_cfg, gateway, prompt, api_key, base_url, ids):
             "throughput": {"tps_generation": round(out_tok / (gen_ms / 1000), 2) if gen_ms else None,
                            "tps_call": round(out_tok / (e2e_ms / 1000), 2) if e2e_ms else None,
                            "tps_session": None},
+            # `usage_source` também na Trilha A: sem ele, o runbook (que manda ler
+            # "registro sem esse campo é anterior à 0.8.0") classificaria como
+            # legado um registro que a 0.8.0 acabou de produzir. Aqui não há
+            # harness no meio — o runner É o cliente, e o `usage` vem da resposta
+            # da própria API, que é a fonte mais direta que existe.
             "cost": {"cost_usd_computed": compute_cost(usage, model_cfg["price_per_mtok"]),
-                     "cost_usd_harness": None, "cost_delta_pct": None},
+                     "cost_usd_harness": None, "cost_delta_pct": None,
+                     "usage_source": "a_api_response"},
             "request_id": request_id, "reply_preview": reply[:200]})
         return rec
     except Exception as exc:  # noqa: BLE001

@@ -69,6 +69,15 @@ estável/campanha publicada. Proibido `feat:`/`fix:`/`chore:` e mensagens vagas.
 - **Auditoria é bloqueante:** se o bloco A falhar, o run aborta (`audit_passed:false`).
 - **Métrica ausente = `null`, nunca `0`** (§10.3). Um harness sem contagem de
   subagente não tem "0 subagentes".
+- **Custo/tokens: C3 → C2-dedup → C1, e a fonte vai gravada** (§10.1). O C3 fica no
+  topo por princípio (única camada externa ao harness), mas só é eleito com
+  **cobertura total** da janela — presença parcial publicaria ordens de grandeza a
+  menos com o selo da camada mais confiável. O C2 é agregado por `message.id`
+  (**máximo por bucket**, nunca soma: o streaming repete a mesma mensagem). Todo
+  registro carrega `cost.usage_source` — sem ela o `cost_delta_pct` não é
+  interpretável —, e **nenhuma fonte ⇒ `null`, nunca `0`**: custo zero num run pago
+  é pior que custo ausente. O `usage` top-level do C1 **não** é confiável como
+  agregado do run: mediu-se omitindo uma chamada inteira.
 - **Esforço/raciocínio sempre explícitos** e idênticos por campanha (V17); nunca
   herdados, nunca omitidos.
 - **Flags/campos do Claude Code são hipóteses a validar** a cada versão (§6.2, §15).

@@ -375,11 +375,78 @@ O gatilho não foi o C3: **o proxy capturou `usage` vazio em 0 de 53 chamadas.**
    possível para a última). Foi por isso que os achados 1–2 só puderam ser provados
    na rep3.
 
-**Decisão de operador pendente (§14):** mudar a fonte de verdade de custo/tokens da
-Trilha B para **C2 dedup** (hoje: C3→C1) muda o número que o benchmark publica —
-não foi feito unilateralmente. As opções são (a) C2-dedup como verdade quando o C3
-vier vazio, (b) manter C1 e publicar `cost_delta_pct` como ressalva, (c) consertar o
-parse do SSE do CC no proxy e restaurar o C3 como verdade-base.
+**Decisão de operador (§14), tomada em 22/07/2026:** adotar o **C2-dedup**. Feito na
+0.8.0 (abaixo). O (c) — consertar o parse do SSE no proxy — segue como o alvo certo,
+porque devolve a verdade-base à única camada externa ao harness.
+
+## Verdade de custo: C3 → C2-dedup → C1 (22/07/2026, 0.8.0)
+
+**Y:** muda o schema (`cost.usage_source`) e a semântica do número publicado.
+
+- **`collect.parse_c2` agrega `usage` por `message.id`**, não por linha. Duplicatas
+  observadas no 2.1.207 são **idênticas** (7/7 grupos na rep3); se alguma versão
+  emitir usage progressivo, fica a linha de **maior total** — nunca se misturam
+  campos de linhas diferentes (§15). Sem `message.id`, não deduplica (conservador:
+  não funde o que não se provou ser a mesma mensagem).
+- **`tokens_per_turn` e `context_peak` saem do dedup** — antes o `per_turn`
+  publicava a mesma mensagem várias vezes (o pico não mudou: era `max`).
+- **Precedência C3 → C2-dedup → C1** e **`cost.usage_source` gravado em todo
+  registro** (Trilha A inclusive, como `a_api_response`). O C3 só é eleito com
+  **cobertura total** da janela.
+- ✅ **`tests/test_cost_truth_offline.py` (29 checks)** — prova contra o **dado pago
+  real**: a fixture `c2_usage_dedup_opus48_rep3.json` congela os 29 pares
+  (`message.id`, `usage`) da rep3 (**só números**: nenhum prompt, código do legado ou
+  texto do modelo — é repo público, com ids anonimizados preservando o padrão de
+  repetição). O dedup reproduz o `total_cost_usd` **em todos os dígitos**
+  (US$1,0293165, igualdade exata — sem tolerância no teste); a soma crua infla 72%;
+  e o mesmo envelope **sem** C2 cai no C1 e o delta de 38% reaparece — a prova de que
+  a troca de precedência é o que corrige o número.
+
+### O que a revisão adversarial (3 lentes, 3/3 completas) pegou — tudo corrigido
+
+Duas delas eram **defeitos graves na minha própria correção**, e dois testes meus
+**congelavam o comportamento errado**:
+
+- **O C3 era eleito por PRESENÇA, não por cobertura.** Uma chamada instrumentada
+  entre 53 publicaria **US$0,0004 no lugar de US$1,03** — com o selo da camada de
+  maior confiança. E "SSE meio consertado" é justamente o próximo passo declarado do
+  projeto. Agora exige `usage_calls == calls`, e a cobertura vai no registro.
+- **"Linha de maior total" erra no formato real do SSE da Anthropic.** O protocolo é
+  **delta-shaped**: `message_start` traz input/cache com output ≈1, `message_delta`
+  traz **só** o output. A heurística pegaria o `message_start` e **descartaria o
+  output inteiro** — o bucket mais caro (US$25/Mtok vs US$0,50 do cache_read) —,
+  subestimando o custo. Trocado por **máximo por bucket**, que acerta os dois
+  formatos e é idêntico ao anterior quando as duplicatas são idênticas.
+- **`cost_usd_computed: 0.0` quando não havia fonte nenhuma** (timeout → `c1=None` +
+  transcript não achado): um run PAGO entrava como **grátis** em qualquer mediana, e
+  o `usage_source: "c1_harness"` afirmava procedência falsa. Viola §10.3 no campo que
+  esta versão promoveu a número auditado. Agora os dois saem `null`.
+- **O pico de contexto herdara a heurística de custo** e podia **diminuir**: dedup é
+  necessário para soma, não para máximo. Voltou a ser `max` sobre todas as linhas.
+- **Nada detectava a quebra da hipótese do §15.** Novo `c2_usage_conflicts`: enquanto
+  for 0, o registro **prova** que só houve repetição idêntica; >0 marca inspeção em
+  vez de deixar a fusão escolher em silêncio.
+- **A Trilha A não gravava `usage_source`**, e o runbook manda ler ausência do campo
+  como "registro pré-0.8.0" — classificaria como legado um dado recém-produzido.
+- **A fixture trazia `1.029316`** (truncado) contra `1.0293165` do registro pago: a
+  tolerância `<1e-6` do teste estava **absorvendo erro de dado como se fosse ruído de
+  float**. Corrigido, e o teste agora exige igualdade exata.
+- Menores: `usage` não numérico derrubava a coleta de um run pago (agora vira 0); o
+  docstring do `collect.py` ainda publicava a precedência revogada.
+
+**Follow-ups registrados** (não corrigidos aqui, escopo próprio): preço **por modelo**
+— o C2 descarta `message.model` e o `_cost` aplica uma tabela só, então um run com
+subagente em outro modelo seria precificado inteiro na tabela do principal; e
+`ephemeral_1h_input_tokens` é somado ao `cache_creation` e precificado como write de
+5m (1,25× em vez de 2×) — zero em todas as reps medidas, vira erro real no 1º run com
+cache de 1h.
+
+**O que NÃO mudou nos artefatos já pagos:** a mediana de custo publicada da 1ª
+campanha (US$1,0293) sempre saiu do `cost_usd_harness`, que é o número correto — o
+que estava errado era só o `cost_usd_computed` da rep3, o campo de conferência.
+Recomputá-lo exigiria o transcript, que só sobrevive para a **última** rep (achado 4
+acima), então os registros pagos ficaram como estão; o `usage_source` ausente neles
+já os identifica como anteriores à 0.8.0.
 
 ## Próximo — Fase 4 / campanha real
 
